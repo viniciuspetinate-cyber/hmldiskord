@@ -1,0 +1,2726 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Pede ao navegador para conferir se há versão nova em cada carregamento, em
+     vez de servir o arquivo guardado. Evita ter que pedir Ctrl+Shift+R para
+     todo mundo depois de publicar. O cabeçalho HTTP da Vercel manda mais que
+     isto, mas os dois apontam para o mesmo lado. -->
+<meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
+<!-- SALA-VERSAO: v2 · 2026-08-18 — desempenho, estabilidade e placa de captura -->
+<title>Sala</title>
+<style>
+  :root{
+    --bg-deep:#141219;
+    --bg-rail:#1a1720;
+    --bg-side:#1f1c27;
+    --bg-main:#242030;
+    --bg-input:#2c2837;
+    --bg-hover:#332e40;
+    --border:#332f3d;
+    --text-hi:#f3f1f7;
+    --text-mid:#c9c4d4;
+    --text-low:#8d879c;
+    --accent:#ff9f5b;
+    --accent-dim:#7a5334;
+    --online:#5fd98a;
+    --green:#3ba55d;
+    --red:#ed4245;
+    --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{height:100%;}
+  body{
+    font-family:var(--font-ui);
+    background:var(--bg-deep);
+    color:var(--text-hi);
+    overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+  #app{ height:100vh; width:100%; display:flex; }
+
+  /* ---------- GATE (nickname) ---------- */
+  #gate{
+    position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+    background:radial-gradient(circle at 30% 20%, #2a2436 0%, var(--bg-deep) 60%);
+    z-index:50;
+  }
+  #gate .card{
+    width:340px; background:var(--bg-side); border:1px solid var(--border);
+    border-radius:16px; padding:32px 28px; text-align:center;
+    box-shadow:0 20px 60px rgba(0,0,0,0.45);
+  }
+  #gate .dot{
+    width:14px;height:14px;border-radius:50%;background:var(--accent);
+    margin:0 auto 16px; box-shadow:0 0 0 6px var(--accent-dim);
+    animation:pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse{
+    0%,100%{box-shadow:0 0 0 6px var(--accent-dim);}
+    50%{box-shadow:0 0 0 10px transparent;}
+  }
+  #gate h1{ font-size:19px; font-weight:700; margin-bottom:6px; letter-spacing:-0.2px;}
+  #gate p{ font-size:13px; color:var(--text-low); margin-bottom:20px; line-height:1.5;}
+  #gate input{
+    width:100%; padding:11px 14px; border-radius:8px; border:1px solid var(--border);
+    background:var(--bg-input); color:var(--text-hi); font-size:14px; outline:none;
+    margin-bottom:12px;
+  }
+  #gate input:focus{ border-color:var(--accent); }
+  #gate button{
+    width:100%; padding:11px; border-radius:8px; border:none; cursor:pointer;
+    background:var(--accent); color:#1a1210; font-weight:700; font-size:14px;
+    transition:filter .15s;
+  }
+  #gate button:hover{ filter:brightness(1.08); }
+  #gate .err{ color:#ff8484; font-size:12px; margin-top:8px; min-height:14px; }
+  #gate .ver{ color:var(--text-low); font-size:10px; margin-top:14px; font-family:var(--font-mono); opacity:.7; }
+
+  /* ---------- PAINEL DE NOVIDADES (só no ambiente de teste) ---------- */
+  body.ambiente-dev #gate{ gap:22px; flex-wrap:wrap; padding:24px; align-content:center; }
+  #novidades, .novidades-corpo{
+    width:400px; max-width:92vw; max-height:78vh; overflow-y:auto;
+    background:var(--bg-side); border:1px solid var(--border);
+    border-radius:16px; padding:22px 24px; text-align:left;
+    box-shadow:0 20px 60px rgba(0,0,0,0.45);
+  }
+  .novidades-corpo h2{ font-size:13px; font-weight:700; margin-bottom:4px; }
+  .novidades-corpo .sub{ font-size:11px; color:var(--text-low); margin-bottom:16px; line-height:1.5; }
+  .novidades-corpo .grupo{ margin-bottom:15px; }
+  .novidades-corpo .grupo:last-of-type{ margin-bottom:0; }
+  .novidades-corpo .grupo h3{
+    font-size:10px; text-transform:uppercase; letter-spacing:.7px;
+    color:var(--accent); margin-bottom:7px; font-weight:700;
+  }
+  .novidades-corpo ul{ list-style:none; display:flex; flex-direction:column; gap:6px; }
+  .novidades-corpo li{
+    font-size:12px; color:var(--text-mid); line-height:1.5;
+    padding-left:15px; position:relative;
+  }
+  .novidades-corpo li::before{ content:'▸'; position:absolute; left:0; top:0; color:var(--text-low); }
+  .novidades-corpo li b{ color:var(--text-hi); font-weight:600; }
+  .novidades-corpo .rodape{
+    margin-top:16px; padding-top:12px; border-top:1px solid var(--border);
+    font-size:10px; color:var(--text-low); font-family:var(--font-mono); line-height:1.7;
+  }
+
+  /* ---------- BASE DAS JANELAS FLUTUANTES ---------- */
+  .modal{
+    position:fixed; inset:0; z-index:110;
+    background:rgba(10,8,14,0.65);
+    display:flex; align-items:center; justify-content:center; padding:20px;
+  }
+  .modal.hidden{ display:none; }
+  .modal-card{
+    width:440px; max-width:94vw; max-height:88vh;
+    background:var(--bg-side); border:1px solid var(--border);
+    border-radius:14px; overflow:hidden;
+    box-shadow:0 24px 70px rgba(0,0,0,0.55);
+  }
+  .modal-header{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px 18px; border-bottom:1px solid var(--border);
+    font-weight:700; font-size:14px;
+  }
+  .modal-close{ cursor:pointer; color:var(--text-low); font-size:16px; line-height:1; padding:2px 4px; }
+  .modal-close:hover{ color:var(--text-hi); }
+
+  #modal-novidades .modal-card{ width:520px; max-height:82vh; display:flex; flex-direction:column; }
+  #modal-novidades .novidades-corpo{
+    width:auto; max-width:none; max-height:none; border:none; border-radius:0;
+    box-shadow:none; background:transparent; overflow-y:auto; padding:20px 24px;
+  }
+
+  /* ---------- MARCA DE AMBIENTE DE TESTE ---------- */
+  /* Só aparece quando o arquivo não é o sala.html. Serve para ninguém achar
+     que está na sala de verdade e mandar recado para o vazio. */
+  .dev-badge{
+    display:inline-flex; align-items:center; gap:6px;
+    background:#4a2430; color:#ffb4b4; border:1px solid #6b3340;
+    font-size:10px; font-weight:800; letter-spacing:.9px; text-transform:uppercase;
+    padding:4px 10px; border-radius:20px; font-family:var(--font-ui);
+  }
+  #gate .dev-badge{ margin-bottom:14px; }
+  #server-name .dev-badge{ font-size:9px; padding:2px 7px; letter-spacing:.6px; }
+  body.ambiente-dev #rail .server-icon{ background:#ed4245; color:#fff; }
+  body.ambiente-dev #rail::after{
+    content:'DEV'; font-size:9px; font-weight:800; color:#ff9d9d;
+    letter-spacing:1px; margin-top:-4px;
+  }
+  body.ambiente-dev #main{ box-shadow: inset 0 3px 0 0 #ed4245; }
+
+  /* ---------- RAIL ---------- */
+  #rail{
+    width:64px; background:var(--bg-rail); flex-shrink:0;
+    display:flex; flex-direction:column; align-items:center; padding-top:16px; gap:10px;
+  }
+  #rail .server-icon{
+    width:42px; height:42px; border-radius:14px; background:var(--accent);
+    color:#1a1210; font-weight:800; font-family:var(--font-mono);
+    display:flex; align-items:center; justify-content:center; font-size:16px;
+  }
+  #rail .rail-line{ width:26px; height:2px; background:var(--border); border-radius:2px; margin:2px 0; }
+
+  /* ---------- SIDEBAR ---------- */
+  #sidebar{
+    width:240px; background:var(--bg-side); flex-shrink:0;
+    display:flex; flex-direction:column; border-right:1px solid var(--border);
+  }
+  #server-name{
+    padding:16px 16px 12px; font-weight:700; font-size:15px;
+    border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between;
+  }
+  #server-name .edit-btn{ cursor:pointer; color:var(--text-low); font-size:12px; }
+  #server-name .edit-btn:hover{ color:var(--accent); }
+  #server-name input{
+    background:var(--bg-input); border:1px solid var(--accent); border-radius:6px;
+    color:var(--text-hi); font-size:14px; padding:4px 8px; width:100%; outline:none;
+  }
+  #scroll-area{ flex:1; overflow-y:auto; }
+  .section-header{
+    padding:14px 14px 6px; font-size:11px; text-transform:uppercase; letter-spacing:0.6px;
+    color:var(--text-low); display:flex; justify-content:space-between; align-items:center;
+  }
+  .section-header .add{
+    cursor:pointer; color:var(--text-low); font-size:16px; line-height:1; padding:0 4px;
+  }
+  .section-header .add:hover{ color:var(--accent); }
+  #channel-list, #voice-list{ padding:2px 8px; }
+  .channel-item{
+    display:flex; align-items:center; gap:6px; padding:7px 10px; border-radius:6px;
+    cursor:pointer; color:var(--text-mid); font-size:14px; font-family:var(--font-mono);
+    margin-bottom:1px;
+  }
+  .channel-item:hover{ background:var(--bg-hover); color:var(--text-hi); }
+  .channel-item.active{ background:var(--bg-hover); color:var(--text-hi); }
+  .channel-item .hash{ color:var(--text-low); }
+  .channel-item.active .hash{ color:var(--accent); }
+  .channel-item .count{ margin-left:auto; font-size:11px; color:var(--text-low); font-family:var(--font-ui); }
+
+  .new-row{ padding:6px 14px 10px; display:none; gap:6px; }
+  .new-row.show{ display:flex; }
+  .new-row input{
+    flex:1; background:var(--bg-input); border:1px solid var(--border); border-radius:6px;
+    color:var(--text-hi); font-size:13px; padding:6px 8px; outline:none; font-family:var(--font-mono);
+  }
+  .new-row input:focus{ border-color:var(--accent); }
+  .new-row button{
+    background:var(--accent); color:#1a1210; border:none; border-radius:6px;
+    padding:0 10px; font-weight:700; cursor:pointer; font-size:13px;
+  }
+
+  /* ---------- VOZ ---------- */
+  .voice-block{ margin-bottom:2px; }
+  .voice-occupants{ padding:1px 0 4px 22px; display:flex; flex-direction:column; gap:1px; }
+  .vo-row{
+    display:flex; align-items:center; gap:7px; padding:3px 8px; border-radius:5px;
+    font-size:12.5px; color:var(--text-mid);
+  }
+  .vo-row:hover{ background:var(--bg-hover); }
+  .vo-row .avatar{
+    width:22px; height:22px; font-size:10px; border:2px solid transparent;
+    transition:border-color .1s linear;
+  }
+  .vo-row.speaking .avatar{ border-color:var(--green); }
+  .vo-row .vname{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .vo-row .vicon{ margin-left:auto; font-size:11px; flex-shrink:0; }
+  .vo-row .vicon.bad{ color:var(--red); }
+  .vo-row .vicon.live{ color:var(--green); }
+  .vo-row .vstate{ margin-left:auto; font-size:10px; color:var(--text-low); flex-shrink:0; }
+
+  #call-bar{ display:none; padding:9px 10px; background:#182119; border-top:1px solid var(--border); }
+  body.in-call #call-bar{ display:block; }
+  #call-bar .call-top{ display:flex; align-items:center; gap:7px; margin-bottom:8px; }
+  #call-bar .call-status{ font-size:12.5px; font-weight:700; color:var(--green); }
+  #call-bar .call-where{ font-size:11px; color:var(--text-low); font-family:var(--font-mono); }
+  #call-bar .hangup{
+    margin-left:auto; cursor:pointer; background:#3a1e22; color:#ff9d9d; border:none;
+    border-radius:6px; padding:5px 9px; font-size:11px; font-weight:700;
+  }
+  #call-bar .hangup:hover{ background:#4d262c; }
+  #call-bar .call-btns{ display:flex; gap:6px; }
+  #call-bar .cbtn{
+    flex:1; cursor:pointer; background:var(--bg-input); color:var(--text-mid); border:1px solid var(--border);
+    border-radius:6px; padding:7px 4px; font-size:11px; font-weight:600; text-align:center;
+  }
+  #call-bar .cbtn:hover{ background:var(--bg-hover); color:var(--text-hi); }
+  #call-bar .cbtn.on{ background:#3a1e22; color:#ff9d9d; border-color:#5a2c33; }
+  #call-bar .cbtn.live{ background:#1e3a26; color:#8ff0ab; border-color:#2c5a38; }
+
+  #user-bar{
+    padding:10px 12px; border-top:1px solid var(--border); display:flex; align-items:center; gap:8px;
+    background:var(--bg-rail);
+  }
+  .avatar{
+    width:32px; height:32px; border-radius:50%; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px;
+    color:#1a1210;
+  }
+  #user-bar .who{ flex:1; overflow:hidden; }
+  #user-bar .who .name{ font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #user-bar .who .status{ font-size:11px; color:var(--online); }
+  #user-bar .leave{ cursor:pointer; color:var(--text-low); font-size:11px; padding:4px 6px; border-radius:6px; }
+  #user-bar .leave:hover{ color:#ff8484; background:var(--bg-hover); }
+
+  /* ---------- MAIN ---------- */
+  #main{ flex:1; display:flex; flex-direction:column; background:var(--bg-main); min-width:0; }
+  #chat-header{
+    height:52px; flex-shrink:0; display:flex; align-items:center; padding:0 18px;
+    border-bottom:1px solid var(--border); gap:8px; font-weight:700; font-size:15px;
+  }
+  #chat-header .hash{ color:var(--text-low); font-family:var(--font-mono); font-weight:400; }
+  #chat-header .head-btn{
+    font-size:12px; color:var(--text-low); cursor:pointer; font-weight:500;
+    display:flex; align-items:center; gap:5px; padding:5px 8px; border-radius:6px;
+  }
+  #chat-header .head-btn:hover{ color:var(--text-hi); background:var(--bg-hover); }
+  #chat-header .head-btn.first{ margin-left:auto; }
+  #chat-header .head-btn.live{ color:#8ff0ab; }
+  #chat-header .dot-small{ width:7px; height:7px; border-radius:50%; background:var(--online); }
+
+  /* ---------- PALCO (tela compartilhada) ---------- */
+  #stage{
+    display:none; flex-direction:column; background:#000;
+    border-bottom:1px solid var(--border); flex:1 1 62%; min-height:0;
+  }
+  body.stage-on #stage{ display:flex; }
+  body.stage-on #messages{ flex:0 0 30%; }
+  body.theater #messages, body.theater #input-row{ display:none; }
+  body.theater #stage{ flex:1 1 100%; }
+
+  #stage-bar{
+    display:flex; align-items:center; gap:8px; padding:7px 12px;
+    background:var(--bg-rail); border-bottom:1px solid var(--border); flex-shrink:0;
+  }
+  #stage-title{ font-size:12.5px; font-weight:700; display:flex; align-items:center; gap:6px; min-width:0; }
+  #stage-title .rec{ width:8px; height:8px; border-radius:50%; background:var(--red); flex-shrink:0; }
+  #stage-title .audio-tag{
+    font-size:10px; font-weight:600; padding:2px 7px; border-radius:20px; white-space:nowrap;
+    background:var(--bg-input); color:var(--text-low); border:1px solid var(--border);
+  }
+  #stage-title .audio-tag.ok{ background:#1e3a26; color:#8ff0ab; border-color:#2c5a38; }
+  #stage-title .audio-tag.alerta{ background:#3a2a18; color:#ffc98f; border-color:#5c4425; }
+  #stage-tabs{ display:flex; gap:5px; overflow-x:auto; }
+  #stage-tabs .stab{
+    cursor:pointer; font-size:11px; padding:4px 9px; border-radius:6px;
+    background:var(--bg-input); color:var(--text-mid); border:1px solid var(--border); white-space:nowrap;
+  }
+  #stage-tabs .stab.active{ background:var(--accent); color:#1a1210; border-color:var(--accent); font-weight:700; }
+  #stage-actions{ margin-left:auto; display:flex; gap:5px; flex-shrink:0; }
+  #stage-actions .sbtn{
+    cursor:pointer; font-size:11px; padding:5px 9px; border-radius:6px;
+    background:var(--bg-input); color:var(--text-mid); border:1px solid var(--border);
+  }
+  #stage-actions .sbtn:hover{ background:var(--bg-hover); color:var(--text-hi); }
+  #stage-actions .sbtn.on{ background:var(--accent); color:#1a1210; border-color:var(--accent); font-weight:700; }
+
+  #stage-video-wrap{ flex:1; position:relative; min-height:0; background:#000; }
+  #stage-video{ width:100%; height:100%; object-fit:contain; display:block; background:#000; }
+  #stage-status{
+    position:absolute; inset:0; display:none; align-items:center; justify-content:center;
+    color:var(--text-low); font-size:13px; text-align:center; padding:20px; pointer-events:none;
+    background:rgba(0,0,0,0.55); white-space:pre-line;
+  }
+  #stage-status.show{ display:flex; }
+
+  #messages{ flex:1; overflow-y:auto; padding:16px 20px 8px; display:flex; flex-direction:column; gap:2px; min-height:0; }
+  #messages .empty{
+    margin:auto; text-align:center; color:var(--text-low); font-size:13px; max-width:280px; line-height:1.6;
+  }
+  .msg{ display:flex; gap:12px; padding:6px 4px; border-radius:8px; }
+  .msg:hover{ background:rgba(255,255,255,0.02); }
+  .msg .avatar{ margin-top:2px; }
+  .msg .body{ min-width:0; flex:1; }
+  .msg .meta{ display:flex; align-items:baseline; gap:8px; margin-bottom:2px; }
+  .msg .meta .who{ font-size:14px; font-weight:700; }
+  .msg .meta .ts{ font-size:11px; color:var(--text-low); font-family:var(--font-mono); }
+  .msg .text{ font-size:14px; color:var(--text-mid); line-height:1.5; word-wrap:break-word; white-space:pre-wrap; }
+
+  #input-row{ padding:10px 18px 16px; flex-shrink:0; }
+  #input-wrap{
+    background:var(--bg-input); border:1px solid var(--border); border-radius:10px;
+    display:flex; align-items:center; padding:4px 6px 4px 14px;
+  }
+  #input-wrap:focus-within{ border-color:var(--accent); }
+  #msg-input{
+    flex:1; background:transparent; border:none; outline:none; color:var(--text-hi);
+    font-size:14px; padding:10px 6px; font-family:var(--font-ui);
+  }
+  #msg-input::placeholder{ color:var(--text-low); }
+  #send-btn{
+    background:var(--accent); color:#1a1210; border:none; border-radius:7px; padding:8px 14px;
+    font-weight:700; font-size:13px; cursor:pointer; flex-shrink:0;
+  }
+  #send-btn:hover{ filter:brightness(1.08); }
+
+  /* ---------- MEMBROS ---------- */
+  #members-panel{
+    width:200px; background:var(--bg-side); border-left:1px solid var(--border);
+    flex-shrink:0; display:flex; flex-direction:column;
+  }
+  #members-panel.hidden{ display:none; }
+  #members-panel h3{
+    padding:16px 14px 8px; font-size:11px; text-transform:uppercase; letter-spacing:0.6px; color:var(--text-low);
+  }
+  #members-list{ overflow-y:auto; padding:0 10px; display:flex; flex-direction:column; gap:2px; }
+  .member-row{ display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:6px; }
+  .member-row:hover{ background:var(--bg-hover); }
+  .member-row .avatar{ width:26px; height:26px; font-size:11px; position:relative; }
+  .member-row .status-dot{
+    width:9px; height:9px; border-radius:50%; position:absolute; bottom:-1px; right:-1px;
+    border:2px solid var(--bg-side);
+  }
+  .member-row .status-dot.on{ background:var(--online); }
+  .member-row .status-dot.off{ background:var(--text-low); }
+  .member-row .mname{ font-size:13px; color:var(--text-mid); }
+  .member-row.on .mname{ color:var(--text-hi); }
+
+  #audio-sink{ position:absolute; width:0; height:0; overflow:hidden; }
+
+  #menu-tela{
+    position:fixed; z-index:120; width:284px; background:var(--bg-side);
+    border:1px solid var(--border); border-radius:10px; overflow:hidden;
+    box-shadow:0 14px 40px rgba(0,0,0,0.5);
+  }
+  #menu-tela .mt-op{ padding:11px 14px; cursor:pointer; border-bottom:1px solid var(--border); }
+  #menu-tela .mt-op:last-child{ border-bottom:none; }
+  #menu-tela .mt-op:hover{ background:var(--bg-hover); }
+  #menu-tela .mt-op b{ display:block; font-size:13px; margin-bottom:3px; }
+  #menu-tela .mt-op span{ display:block; font-size:11px; color:var(--text-low); line-height:1.45; }
+  #menu-tela .mt-op[data-modo="aba"] b{ color:#8ff0ab; }
+  #menu-tela .mt-op[data-modo="tela"] b{ color:#ffc98f; }
+  #menu-tela .mt-op[data-modo="captura"] b{ color:#9fc9ff; }
+
+  #modal-captura .modal-card{ width:440px; }
+  #modal-captura .linha{ margin-bottom:14px; }
+  #modal-captura label{
+    display:block; font-size:11px; text-transform:uppercase; letter-spacing:.6px;
+    color:var(--text-low); margin-bottom:6px; font-weight:700;
+  }
+  #modal-captura select{
+    width:100%; padding:9px 10px; border-radius:8px; border:1px solid var(--border);
+    background:var(--bg-input); color:var(--text-hi); font-size:13px; outline:none;
+  }
+  #modal-captura select:focus{ border-color:var(--accent); }
+  #modal-captura .previa{ margin-bottom:12px; }
+  #modal-captura .previa video{
+    width:100%; aspect-ratio:16/9; background:#000; border-radius:8px;
+    display:block; object-fit:contain; border:1px solid var(--border);
+  }
+  #modal-captura #cap-estado{
+    font-size:11px; color:var(--text-low); margin-top:6px; line-height:1.5; min-height:16px;
+  }
+  #modal-captura #cap-estado.ok{ color:#8ff0ab; font-weight:600; }
+  #modal-captura #cap-estado.ruim{ color:#ff9d9d; }
+  #modal-captura .nota{ font-size:11px; color:var(--text-low); line-height:1.5; margin-bottom:14px; }
+  #modal-captura .acoes{ display:flex; gap:8px; }
+  #modal-captura .acoes button{
+    flex:1; padding:10px; border:none; border-radius:8px; font-weight:700;
+    font-size:13px; cursor:pointer;
+  }
+  #modal-captura .ok{ background:var(--accent); color:#1a1210; }
+  #modal-captura .ok:disabled{ background:var(--bg-input); color:var(--text-low); cursor:not-allowed; }
+  #modal-captura .cancelar{ background:var(--bg-input); color:var(--text-mid); border:1px solid var(--border) !important; }
+
+  #unblock-audio{
+    display:none; position:fixed; bottom:18px; left:50%; transform:translateX(-50%);
+    background:var(--accent); color:#1a1210; border:none; border-radius:8px;
+    padding:10px 16px; font-size:13px; font-weight:700; cursor:pointer; z-index:100;
+  }
+  #unblock-audio.show{ display:block; }
+
+  ::-webkit-scrollbar{ width:8px; }
+  ::-webkit-scrollbar-thumb{ background:var(--border); border-radius:4px; }
+  ::-webkit-scrollbar-track{ background:transparent; }
+
+  @media (max-width: 900px){
+    #members-panel{ display:none !important; }
+    #sidebar{ width:200px; }
+    body.stage-on #messages{ flex:0 0 26%; }
+  }
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <div class="card">
+    <div class="dot"></div>
+    <h1>Entrar na sala</h1>
+    <p>Digite a senha da sala e escolha um apelido. Todo mundo que abrir este mesmo link cai na mesma sala.</p>
+    <input id="pass-input" type="password" maxlength="64" placeholder="Senha da sala" autocomplete="off">
+    <input id="nick-input" maxlength="24" placeholder="Seu apelido" autocomplete="off">
+    <button id="nick-btn">Entrar</button>
+    <div class="err" id="nick-err"></div>
+    <div class="ver" id="ver-tag"></div>
+  </div>
+</div>
+
+<div id="app" style="display:none;">
+  <div id="rail">
+    <div class="server-icon" id="server-initial">?</div>
+    <div class="rail-line"></div>
+  </div>
+
+  <div id="sidebar">
+    <div id="server-name"></div>
+
+    <div id="scroll-area">
+      <div class="section-header">
+        <span>Canais de texto</span>
+        <span class="add" id="add-channel-btn" title="Criar canal de texto">＋</span>
+      </div>
+      <div id="new-channel-row" class="new-row">
+        <input id="new-channel-input" maxlength="24" placeholder="nome-do-canal">
+        <button id="new-channel-confirm">Criar</button>
+      </div>
+      <div id="channel-list"></div>
+
+      <div class="section-header">
+        <span>Canais de voz</span>
+        <span class="add" id="add-voice-btn" title="Criar canal de voz">＋</span>
+      </div>
+      <div id="new-voice-row" class="new-row">
+        <input id="new-voice-input" maxlength="24" placeholder="nome-da-sala">
+        <button id="new-voice-confirm">Criar</button>
+      </div>
+      <div id="voice-list"></div>
+    </div>
+
+    <div id="call-bar"></div>
+
+    <div id="user-bar">
+      <div class="avatar" id="my-avatar"></div>
+      <div class="who">
+        <div class="name" id="my-name"></div>
+        <div class="status">Online</div>
+      </div>
+      <div class="leave" id="leave-btn" title="Trocar de apelido">sair</div>
+    </div>
+  </div>
+
+  <div id="main">
+    <div id="chat-header">
+      <span class="hash">#</span><span id="active-channel-name"></span>
+      <div class="head-btn first" id="share-btn">🖥️ Compartilhar tela</div>
+      <div class="head-btn" id="member-toggle-btn"><span class="dot-small"></span><span id="online-count">0</span> online</div>
+    </div>
+
+    <div id="stage">
+      <div id="stage-bar">
+        <span id="stage-title"></span>
+        <div id="stage-tabs"></div>
+        <div id="stage-actions">
+          <span class="sbtn" id="stage-theater" title="Esconder o chat e ampliar o vídeo">Teatro</span>
+          <span class="sbtn" id="stage-pip" title="Picture-in-picture">PiP</span>
+          <span class="sbtn" id="stage-full" title="Tela cheia">Tela cheia</span>
+          <span class="sbtn" id="stage-hide" title="Fechar o palco">✕</span>
+        </div>
+      </div>
+      <div id="stage-video-wrap">
+        <video id="stage-video" autoplay playsinline></video>
+        <div id="stage-status"></div>
+      </div>
+    </div>
+
+    <div id="messages"></div>
+    <div id="input-row">
+      <div id="input-wrap">
+        <input id="msg-input" placeholder="Enviar mensagem…" autocomplete="off" maxlength="1000">
+        <button id="send-btn">Enviar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="members-panel">
+    <h3 id="members-title">Membros — 0</h3>
+    <div id="members-list"></div>
+  </div>
+</div>
+
+<div id="audio-sink"></div>
+<button id="unblock-audio">🔊 Clique para ativar o áudio</button>
+
+<script>
+(function(){
+  const SB_URL = "https://rwkuklrvppzhyzrtiloe.supabase.co";
+  const SB_KEY = "sb_publishable_bUBRlX_BgoM0ACqWyz4WDw_vC4F_OL2";
+  const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json" };
+  const REST = SB_URL + "/rest/v1/room_kv";
+
+  // ---------- ESPAÇO DE DADOS POR ARQUIVO ----------
+  // Todos os arquivos falam com a mesma tabela room_kv. Sem separar, uma cópia
+  // de teste (devsala.html) escreve nas MESMAS chaves da sala de produção e as
+  // mensagens aparecem lá. Aqui cada nome de arquivo ganha seu próprio espaço:
+  //
+  //   sala.html      -> sem prefixo (a sala de produção, dados atuais preservados)
+  //   devsala.html   -> prefixo "devsala:"  (isolado)
+  //   qualquercoisa.html -> prefixo "qualquercoisa:"
+  //
+  // Ou seja: basta copiar o arquivo com outro nome e ele já nasce isolado.
+  // Normalmente o espaço vem do nome do arquivo. Mas se o arquivo for
+  // publicado como index.html na raiz (o padrão do Cloudflare Pages), o nome
+  // some do caminho e ele cairia no espaço de PRODUÇÃO por acidente. Por isso
+  // dá para fixar o espaço aqui, e aí não importa como o arquivo se chama.
+  const ESPACO_FORCADO = "hmlsala";   // homologação: espaço próprio, não importa o nome do arquivo
+
+  const ARQUIVO = (location.pathname.split("/").pop() || "sala.html").toLowerCase();
+  const NS = ESPACO_FORCADO
+    ? ESPACO_FORCADO + ":"
+    : ((ARQUIVO === "sala.html" || ARQUIVO === "") ? "" : ARQUIVO.replace(/\.html?$/, "") + ":");
+  window.__SALA_ARQUIVO = ESPACO_FORCADO || ARQUIVO;
+  window.__SALA_NS = NS;                                    // "" quando é produção
+  window.__SALA_ESPACO = NS ? NS.slice(0, -1) : "producao"; // nome legível do espaço
+
+  // O prefixo entra na ida e sai na volta, então quem chama continua vendo as
+  // chaves como sempre — importante porque a sinalização faz split(":") nelas.
+  // ---------- RELÓGIO DO SERVIDOR ----------
+  // Todo horário que é COMPARADO ENTRE PESSOAS tem que vir de um relógio só.
+  // Se cada navegador usar o próprio, quem estiver com a hora errada apaga
+  // coisa dos outros e some da lista sem motivo. Toda resposta HTTP traz o
+  // cabeçalho Date, então dá para medir o desvio sem pedir nada a mais.
+  let desvioRelogio = 0;   // servidor menos cliente, em ms
+  function anotarRelogio(r){
+    try{
+      const d = r.headers.get("Date");
+      if (!d) return;
+      const t = Date.parse(d);
+      if (t) desvioRelogio = t - Date.now();
+    }catch(e){}
+  }
+  window.agoraServidor = () => Date.now() + desvioRelogio;
+  window.__anotarRelogio = anotarRelogio;   // para o resto do app também aproveitar
+  window.__SALA_DESVIO_RELOGIO = () => Math.round(desvioRelogio / 1000);
+
+  const comNS = (k) => NS + k;
+  const semNS = (k) => (NS && k.startsWith(NS) ? k.slice(NS.length) : k);
+
+  window.storage = {
+    async get(key, shared){
+      if (!shared){
+        const v = localStorage.getItem("local:" + NS + key);
+        return v === null ? null : { value: v };
+      }
+      const r = await fetch(REST + "?select=value&key=eq." + encodeURIComponent(comNS(key)), { headers: H });
+      anotarRelogio(r);
+      if (!r.ok) throw new Error("get failed " + r.status);
+      const rows = await r.json();
+      return rows.length ? { value: rows[0].value } : null;
+    },
+    async set(key, value, shared){
+      if (!shared){ localStorage.setItem("local:" + NS + key, String(value)); return true; }
+      const r = await fetch(REST + "?on_conflict=key", {
+        method: "POST",
+        headers: { ...H, Prefer: "resolution=merge-duplicates,return=minimal" },
+        body: JSON.stringify({ key: comNS(key), value: String(value), updated_at: new Date().toISOString() })
+      });
+      anotarRelogio(r);
+      if (!r.ok) throw new Error("set failed " + r.status);
+      return true;
+    },
+    async delete(key, shared){
+      if (!shared){ localStorage.removeItem("local:" + NS + key); return true; }
+      const r = await fetch(REST + "?key=eq." + encodeURIComponent(comNS(key)), {
+        method: "DELETE", headers: { ...H, Prefer: "return=minimal" }
+      });
+      anotarRelogio(r);
+      if (!r.ok) throw new Error("delete failed " + r.status);
+      return true;
+    },
+    // Busca várias chaves numa requisição só, e devolve APENAS as que mudaram
+    // desde o carimbo informado. Em regime normal ninguém falou nada e a
+    // resposta vem vazia — antes baixávamos o histórico inteiro do chat a cada
+    // ciclo, por pessoa. O carimbo vem do próprio banco, então relógio
+    // desregulado no cliente não atrapalha.
+    async getChanged(keys, desde){
+      const lista = keys.map(k => '"' + encodeURIComponent(comNS(k)) + '"').join(",");
+      let url = REST + "?select=key,value,updated_at&key=in.(" + lista + ")";
+      if (desde) url += "&updated_at=gt." + encodeURIComponent(desde);
+      const r = await fetch(url, { headers: H });
+      anotarRelogio(r);
+      if (!r.ok) throw new Error("getChanged failed " + r.status);
+      let carimbo = desde || null;
+      const valores = {};
+      for (const row of await r.json()){
+        valores[semNS(row.key)] = row.value;
+        if (!carimbo || row.updated_at > carimbo) carimbo = row.updated_at;
+      }
+      return { valores, carimbo };
+    },
+    // Busca várias chaves numa requisição só. O laço principal pedia 4 coisas
+    // em série; a ~0,5s cada, o ciclo levava o próprio intervalo inteiro para
+    // terminar e vivia atrasado.
+    async getMany(keys){
+      const lista = keys.map(k => '"' + encodeURIComponent(comNS(k)) + '"').join(",");
+      const r = await fetch(REST + "?select=key,value&key=in.(" + lista + ")", { headers: H });
+      anotarRelogio(r);
+      if (!r.ok) throw new Error("getMany failed " + r.status);
+      const mapa = {};
+      for (const row of await r.json()) mapa[semNS(row.key)] = row.value;
+      return mapa;
+    },
+    // Lê todas as linhas cuja chave começa com `prefix`. É o que permite fazer
+    // presença e sinalização sem read-modify-write concorrente numa única chave.
+    async list(prefix){
+      const r = await fetch(REST + "?select=key,value&key=like." + encodeURIComponent(comNS(prefix) + "*"), { headers: H });
+      anotarRelogio(r);
+      if (!r.ok) throw new Error("list failed " + r.status);
+      const rows = await r.json();
+      // Devolve sem o prefixo: a sinalização faz split(":") nessas chaves e
+      // contaria os pedaços errado se o namespace viesse junto.
+      return rows.map(row => ({ key: semNS(row.key), value: row.value }));
+    },
+    // Apaga por prefixo o que estiver parado há mais de `ms`. Serve para a
+    // sinalização abandonada por quem fecha a aba de repente — o beforeunload
+    // não consegue garantir a limpeza das chaves que a pessoa escreveu para os
+    // outros, e elas iam acumulando na tabela.
+    async deleteOlderThan(prefix, ms){
+      const limite = new Date(window.agoraServidor() - ms).toISOString();
+      const r = await fetch(REST + "?key=like." + encodeURIComponent(comNS(prefix) + "*") +
+        "&updated_at=lt." + encodeURIComponent(limite), {
+        method: "DELETE", headers: { ...H, Prefer: "return=minimal" }
+      });
+      anotarRelogio(r);
+      if (!r.ok) throw new Error("deleteOlderThan failed " + r.status);
+      return true;
+    },
+    async deletePrefix(prefix, keepalive){
+      const r = await fetch(REST + "?key=like." + encodeURIComponent(comNS(prefix) + "*"), {
+        method: "DELETE", headers: { ...H, Prefer: "return=minimal" }, keepalive: !!keepalive
+      });
+      anotarRelogio(r);
+      if (!r.ok) throw new Error("deletePrefix failed " + r.status);
+      return true;
+    }
+  };
+})();
+</script>
+<script>
+(function(){
+  // Marcador de versão: serve para confirmar que o site publicado está mesmo
+  // servindo este arquivo, e não uma cópia antiga em cache/CDN.
+  const SALA_VERSAO = 'v2 · 2026-08-18';
+
+  // Login por usuário e senha — vale SÓ para as cópias de teste (devsala.html
+  // e afins). A sala de produção continua com a senha compartilhada.
+  // Cole aqui a URL do Worker de login; vazio = sem login, como antes.
+  const AUTH_ENDPOINT = 'https://sala-auth.vinicius-petinate.workers.dev';
+  window.__SALA_VERSAO = SALA_VERSAO;
+  console.info('[sala] versão ' + SALA_VERSAO + ' · espaço de dados: ' + window.__SALA_ESPACO);
+  document.getElementById('ver-tag').textContent =
+    'versão ' + SALA_VERSAO + (window.__SALA_NS ? ' · espaço ' + (window.__SALA_ESPACO || 'producao') : '');
+
+  // Marca visível de ambiente de teste. Vale para qualquer cópia que não se
+  // chame sala.html — devsala.html, teste.html, o que for.
+  const EH_DEV = !!window.__SALA_NS;
+
+  // Recursos que nasceram no ambiente de teste e foram aprovados: bip de
+  // entrada/saída, placa de captura e a lista de novidades. Ligados em todo
+  // lugar, inclusive na produção.
+  const RECURSOS_NOVOS = true;
+
+  // Login vale em qualquer arquivo com o endereço preenchido — produção
+  // inclusive. Só entra quem tem conta em SALA_USUARIOS no Worker; a senha
+  // compartilhada deixa de valer.
+  // Um endereço só, dois modos — escolhidos pelo nome do arquivo:
+  //   sala.html    -> senha da sala guardada no Worker, apelido à escolha
+  //   devsala.html -> conta individual (usuário e senha)
+  // Assim os dois arquivos continuam idênticos.
+  const MODO_LOGIN = !!AUTH_ENDPOINT;
+  // Login por conta é exclusivo do devsala. Qualquer outra cópia (homologação,
+  // por exemplo) entra igual à produção: senha da sala e apelido à escolha —
+  // assim a homologação ensaia o que vai acontecer de verdade.
+  const MODO_CONTA = MODO_LOGIN && /^devsala/.test(window.__SALA_ARQUIVO || '');
+
+  if (EH_DEV){
+    document.title = '[DEV] ' + document.title;
+    document.body.classList.add('ambiente-dev');
+    const card = document.querySelector('#gate .card');
+    const titulo = card && card.querySelector('h1');
+    if (titulo){
+      const selo = document.createElement('div');
+      selo.className = 'dev-badge';
+      selo.textContent = '⚠ ambiente de teste · ' + window.__SALA_ESPACO;
+      card.insertBefore(selo, titulo);
+      titulo.textContent = 'Entrar na sala de teste';
+      const p = card.querySelector('p');
+      if (p) p.textContent = 'Esta é uma cópia isolada. As mensagens daqui não aparecem na sala de produção.';
+    }
+    // o painel de entrada é montado no fim do arquivo, quando NOVIDADES já existe
+  }
+
+  // Tela de entrada quando há login. Fora do bloco acima porque agora vale
+  // para os dois ambientes, e sobrescreve os textos dele.
+  if (MODO_CONTA){
+    const card = document.querySelector('#gate .card');
+    const titulo = card && card.querySelector('h1');
+    if (titulo){
+      titulo.textContent = 'Entrar com sua conta';
+      const p = card.querySelector('p');
+      if (p) p.textContent = 'Acesso restrito. Use o usuário e a senha que o administrador criou para você.';
+    }
+    // O campo de apelido vira o de usuário e vem primeiro — o nome de usuário
+    // passa a ser também o apelido na sala.
+    const nick = document.getElementById('nick-input');
+    const pass = document.getElementById('pass-input');
+    nick.placeholder = 'Usuário';
+    pass.placeholder = 'Senha';
+    pass.parentNode.insertBefore(nick, pass);
+    const sair = document.getElementById('leave-btn');
+    if (sair) sair.title = 'Sair da conta';
+  }
+
+  // Botão no cabeçalho para reabrir a lista. Fora do bloco de teste de
+  // propósito: vale também na produção.
+  if (RECURSOS_NOVOS){
+    const cab = document.getElementById('chat-header');
+    const btnTela = document.getElementById('share-btn');
+    if (cab && btnTela){
+      const b = document.createElement('div');
+      b.className = 'head-btn first';
+      b.id = 'novidades-btn';
+      b.textContent = '✨ Novidades';
+      b.title = 'Ver o que mudou na sala';
+      btnTela.classList.remove('first');   // o "empurra para a direita" passa a ser deste
+      cab.insertBefore(b, btnTela);
+      b.addEventListener('click', abrirModalNovidades);
+    }
+  }
+
+  // Lista das melhorias, mostrada ao lado da entrada e no botão do cabeçalho.
+  // Para atualizar, mexa só aqui: o primeiro grupo é o mais recente.
+  const NOVIDADES = [
+    { titulo: 'Novidades desta versão (v2)', itens: [
+      '<b>A sala ficou 20× mais leve</b> — antes cada pessoa baixava o histórico do chat inteiro a cada 2,5s, mesmo sem mensagem nova.',
+      '<b>Entrar na chamada ficou mais rápido</b>: a conexão não espera mais alguns segundos parada antes de começar.',
+      '<b>A chamada não cai mais</b> quando o servidor engasga — quem já está conversando continua conversando.',
+      '<b>Login vale 30 dias</b>, em vez de pedir senha todo dia.',
+      '<b>Câmera e placa de captura</b> — dá para transmitir console ou câmera, com o áudio do próprio aparelho.',
+      '<b>Bip de entrada e saída</b> nos canais de voz.',
+    ]},
+    { titulo: 'Compartilhamento de tela', itens: [
+      '<b>Corrigido: a tela não abria</b> para quem assistia. O vídeo era destruído a cada 2,5 s pelo próprio app.',
+      '<b>Tela grande</b> — ocupa a área principal, com modo teatro, tela cheia e picture-in-picture.',
+      '<b>Escolha entre aba e tela inteira</b> ao compartilhar. A aba manda só o áudio dela e <b>não dá eco</b>.',
+      '<b>Aviso do áudio</b> em transmissão: mostra se está indo o som da origem ou do sistema todo.',
+      'Qualidade travada em 1080p — texto compartilhado continua legível.',
+    ]},
+    { titulo: 'Voz em grupo', itens: [
+      '<b>Canais de voz</b> com lista de quem está em cada um, mudo, surdo e indicador de quem fala.',
+      'Compartilhamento de tela integrado ao canal, como no Discord.',
+      'Testado com <b>8 pessoas</b> na voz e <b>5 com tela</b> ao mesmo tempo.',
+    ]},
+    { titulo: 'Estabilidade da conexão', itens: [
+      '<b>Servidor TURN</b> — as chamadas passam a funcionar em rede corporativa e no 4G.',
+      '<b>Não cai mais com a aba em segundo plano</b> — o relógio saiu do navegador para um worker.',
+      'Reconexão automática: quem perde conexão volta sozinho, sem sair e entrar.',
+      'Corrigido: depois de algumas quedas, a pessoa ficava marcada como perdida para sempre.',
+    ]},
+  ];
+
+  // Um gerador só, usado na tela de login e no modal de dentro da sala.
+  function htmlNovidades(comTitulo){
+    return (comTitulo ? '<h2>✨ Últimas melhorias</h2>' : '') +
+      '<div class="sub">O que mudou na sala desde a primeira versão. Atualizada a cada versão publicada.</div>' +
+      NOVIDADES.map(g =>
+        '<div class="grupo"><h3>' + escapeHtml(g.titulo) + '</h3><ul>' +
+        g.itens.map(i => '<li>' + i + '</li>').join('') +
+        '</ul></div>'
+      ).join('') +
+      '<div class="rodape">versão ' + SALA_VERSAO + '<br>espaço de dados: ' + escapeHtml(window.__SALA_ESPACO || 'producao') + '</div>';
+  }
+
+  function montarNovidades(){
+    const gate = document.getElementById('gate');
+    if (!gate || document.getElementById('novidades')) return;
+    const painel = document.createElement('div');
+    painel.id = 'novidades';
+    painel.className = 'novidades-corpo';
+    painel.innerHTML = htmlNovidades(true);
+    gate.appendChild(painel);
+  }
+
+  function abrirModalNovidades(){
+    if (document.getElementById('modal-novidades')) return;
+    const m = document.createElement('div');
+    m.id = 'modal-novidades';
+    m.className = 'modal';
+    m.innerHTML =
+      '<div class="modal-card">' +
+        '<div class="modal-header"><span>✨ Últimas melhorias</span>' +
+          '<span class="modal-close" id="nov-x">✕</span></div>' +
+        '<div class="novidades-corpo" id="nov-corpo"></div>' +
+      '</div>';
+    document.body.appendChild(m);
+    m.querySelector('#nov-corpo').innerHTML = htmlNovidades(false);
+    const fechar = () => m.remove();
+    m.querySelector('#nov-x').addEventListener('click', fechar);
+    m.addEventListener('click', e => { if (e.target === m) fechar(); });   // clicar fora fecha
+  }
+
+  const SID = Math.random().toString(36).slice(2,10) + Date.now().toString(36);
+
+  const state = {
+    nickname: null,
+    serverName: 'Comunidade',
+    channels: [],
+    activeChannelId: null,
+    members: {},
+    pedirTudo: false,
+    tique: 0,
+    sessionId: SID,
+  };
+
+  const POLL_MS = 2500;
+  const ONLINE_WINDOW_MS = 8000;
+  const STALE_MEMBER_MS = 5 * 60 * 1000;
+
+  const VOICE_TICK_MS = 1200;      // cadência enquanto alguém está negociando
+  const VOICE_CALMO_MS = 1600;     // com todos conectados; baixo para notar rápido quem entra
+  const VOICE_IDLE_TICK_MS = 4000; // fora da chamada, só para mostrar quem está na voz
+  const VOICE_STALE_MS = 25000;    // presença expira; folgado porque cada ida ao banco custa ~0,5s
+  const PEER_TIMEOUT_MS = 15000;   // nunca conectou nisso -> refaz a negociação
+  const PEER_DROP_GRACE_MS = 7000; // 'disconnected' costuma se resolver sozinho; espera antes de refazer
+  const MAX_PEER_TRIES = 4;
+
+  // Contador de negociação sempre crescente. Um contador que reinicia do zero
+  // trava a reconexão: o outro lado já viu um número maior e descarta a oferta
+  // nova como se fosse velha.
+  let EPOCH = Date.now() % 1000000;
+  function nextEpoch(){ return ++EPOCH; }
+
+  // "Encarnação": muda a cada vez que entro na chamada. Como o sessionId não
+  // muda sem recarregar a página, é isso que avisa os outros que eu sou uma
+  // conexão nova e que o estado antigo do par deve ser jogado fora.
+  let INC = 0;
+
+  // ===================== CONFIGURE O TURN AQUI =====================
+  // STUN só descobre o próprio IP público; ele não carrega mídia. Quando os
+  // dois lados estão atrás de NAT simétrico, firewall corporativo ou CGNAT de
+  // operadora, não existe caminho direto e a conexão simplesmente não fecha.
+  // O TURN é um relay: a mídia passa por ele quando o caminho direto falha.
+  //
+  // Preencha e a sala passa a funcionar nessas redes. Sem isso, alguns pares
+  // vão aparecer como "falhou" por mais correções que existam no código.
+  // OPÇÃO A — credenciais fixas (coturn próprio, ou Cloudflare com TTL longo).
+  // Simples, mas ficam visíveis no código-fonte da página.
+  const TURN_SERVERS = [
+    // { urls: ['turn:SEU-HOST:3478?transport=udp', 'turn:SEU-HOST:3478?transport=tcp'],
+    //   username: 'usuario', credential: 'senha' },
+    // { urls: 'turns:SEU-HOST:5349?transport=tcp',   // TLS na 5349: atravessa firewall que só libera HTTPS
+    //   username: 'usuario', credential: 'senha' },
+  ];
+
+  // OPÇÃO B — credenciais de curta duração buscadas num endpoint. É o modo do
+  // Cloudflare, e o único que não deixa a senha do relay exposta na página.
+  // Aponte para a Edge Function do Supabase que gera as credenciais.
+  // Worker do Cloudflare que gera as credenciais TURN de curta duração.
+  // Código dele em cloudflare/turn-worker.js.
+  //
+  // Se um dia esta URL mudar, é só trocar aqui — nada mais no arquivo depende
+  // dela. Deixando em branco, a sala volta a funcionar só com STUN.
+  const TURN_ENDPOINT = 'https://sala-turn-api.vinicius-petinate.workers.dev';
+  // =================================================================
+
+  const ICE_SERVERS = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun.cloudflare.com:3478' }
+  ].concat(TURN_SERVERS);
+
+  // Teste: no console, rode  __SALA_SO_RELAY = true  e entre na chamada. Isso
+  // proíbe o caminho direto, então a conexão só fecha se o TURN estiver mesmo
+  // funcionando. Se conectar, o TURN está certo; se der "falhou", está errado.
+  window.__SALA_SO_RELAY = false;
+
+  // Busca as credenciais de curta duração e guarda até perto de expirarem.
+  // Se o endpoint falhar, cai para a lista fixa em vez de impedir a chamada.
+  let ICE_CACHE = { servers: null, expiraEm: 0 };
+
+  async function resolverIceServers(){
+    if (!TURN_ENDPOINT) return ICE_SERVERS;
+    if (ICE_CACHE.servers && Date.now() < ICE_CACHE.expiraEm) return ICE_CACHE.servers;
+    try{
+      // AbortController corta a conexão de verdade; sem ele o navegador
+      // continuaria segurando o pedido depois do prazo.
+      const corta = new AbortController();
+      const alarme = setTimeout(() => corta.abort(), 6000);
+      const r = await fetch(TURN_ENDPOINT, { headers: { 'Accept': 'application/json' }, signal: corta.signal })
+        .finally(() => clearTimeout(alarme));
+      if (window.__anotarRelogio) window.__anotarRelogio(r);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const j = await r.json();
+      // O Cloudflare devolve iceServers como um objeto único; outros serviços
+      // devolvem uma lista. Aceita os dois formatos.
+      const bruto = Array.isArray(j.iceServers) ? j.iceServers
+                  : (j.iceServers ? [j.iceServers] : []);
+      // A entrada só de STUN vem com username/credential em branco. Campo vazio
+      // faz alguns navegadores recusarem a lista inteira, então some com eles.
+      const extra = bruto.map(s => {
+        const limpo = { urls: s.urls };
+        if (s.username) limpo.username = s.username;
+        if (s.credential) limpo.credential = s.credential;
+        return limpo;
+      }).filter(s => s.urls && s.urls.length);
+      if (!extra.length) throw new Error('resposta sem iceServers');
+      const ttl = Number(j.ttl) > 0 ? Number(j.ttl) : 3600;
+      ICE_CACHE.servers = ICE_SERVERS.concat(extra);
+      ICE_CACHE.expiraEm = Date.now() + ttl * 800;   // renova a 80% do TTL
+      window.__SALA_TURN = 'ok (' + extra.length + ' servidor(es), ttl ' + ttl + 's)';
+      return ICE_CACHE.servers;
+    }catch(e){
+      console.error('[sala] falha ao buscar credenciais TURN:', e);
+      // Traduz o erro para algo que sirva de diagnóstico na hora do aperto.
+      window.__SALA_TURN = 'FALHOU: ' + (
+        e.name === 'AbortError'      ? 'sem resposta em 6s (a rede parece bloquear o servidor)' :
+        /Failed to fetch/.test(e.message || '') ? 'não alcancei o servidor (rede bloqueando ou fora do ar)' :
+        e.message);
+      // Avisa uma vez só: se a função ainda não foi publicada, não faz sentido
+      // encher a tela de alerta a cada entrada na chamada.
+      if (!ICE_CACHE.avisou){
+        ICE_CACHE.avisou = true;
+        showToast('Sem servidor TURN configurado — a chamada usa conexão direta e pode falhar em rede corporativa.');
+      }
+      return ICE_SERVERS;
+    }
+  }
+
+  function escapeHtml(str){
+    return String(str).replace(/[&<>"']/g, c => ({
+      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+    }[c]));
+  }
+
+  function slugify(s){
+    return s.toLowerCase().trim()
+      .replace(/[^a-z0-9à-ÿ\s-]/g,'')
+      .replace(/\s+/g,'-')
+      .slice(0,24) || 'canal';
+  }
+
+  function colorFor(name){
+    const palette = ['#ff9f5b','#5fd98a','#5b9dff','#ff6b9e','#c78cff','#ffd15b','#5be0d9'];
+    let h = 0;
+    for (let i=0;i<name.length;i++) h = (h*31 + name.charCodeAt(i)) >>> 0;
+    return palette[h % palette.length];
+  }
+
+  function initials(name){
+    return (name||'?').trim().slice(0,2).toUpperCase();
+  }
+
+  function timeFmt(ts){
+    const d = new Date(ts);
+    return d.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
+  }
+
+  function sleep(ms){ return new Promise(res => setTimeout(res, ms)); }
+
+  // Nada aqui pode esperar para sempre. Rede que ENGOLE o pacote (em vez de
+  // recusar) deixa um fetch pendurado por minutos, e o pedido de microfone
+  // fica parado se a permissão nunca for respondida — nos dois casos a pessoa
+  // vê "carregando" sem fim. Melhor seguir sem o recurso do que travar.
+  function comPrazo(promessa, ms, aoEstourar){
+    let t;
+    return Promise.race([
+      promessa,
+      new Promise(res => { t = setTimeout(() => res({ __prazo: true }), ms); })
+    ]).then(r => {
+      clearTimeout(t);
+      if (r && r.__prazo){
+        console.warn('[sala] prazo de ' + ms + 'ms estourado: ' + (aoEstourar || 'operação'));
+        return { __prazo: true };
+      }
+      return r;
+    });
+  }
+
+  async function safeGet(key, shared, retries){
+    retries = retries === undefined ? 2 : retries;
+    for (let i=0; i<=retries; i++){
+      try{
+        const r = await window.storage.get(key, shared);
+        return r ? r.value : null;
+      }catch(e){
+        if (i === retries) return null;
+        await sleep(400 * (i+1));
+      }
+    }
+    return null;
+  }
+  async function safeSet(key, value, shared, retries){
+    retries = retries === undefined ? 2 : retries;
+    for (let i=0; i<=retries; i++){
+      try{
+        await window.storage.set(key, value, shared);
+        return true;
+      }catch(e){
+        console.error('storage set failed', key, e);
+        if (i === retries) return false;
+        await sleep(500 * (i+1));
+      }
+    }
+    return false;
+  }
+
+  async function safeDelete(key, shared){
+    try{ await window.storage.delete(key, shared); return true; }catch(e){ return false; }
+  }
+
+  async function safeGetChanged(keys, desde){
+    try{ return await window.storage.getChanged(keys, desde); }catch(e){ return null; }
+  }
+
+  async function safeGetMany(keys){
+    try{ return await window.storage.getMany(keys); }catch(e){ return null; }
+  }
+
+  async function safeList(prefix){
+    try{ return await window.storage.list(prefix); }catch(e){ return null; }
+  }
+
+  async function safeDeleteOlderThan(prefix, ms){
+    try{ await window.storage.deleteOlderThan(prefix, ms); return true; }catch(e){ return false; }
+  }
+
+  async function safeDeletePrefix(prefix, keepalive){
+    try{ await window.storage.deletePrefix(prefix, keepalive); return true; }catch(e){ return false; }
+  }
+
+  function showToast(msg){
+    let t = document.getElementById('toast');
+    if (!t){
+      t = document.createElement('div');
+      t.id = 'toast';
+      t.style.cssText = 'position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#3a2430;color:#ff9f5b;border:1px solid #5a3040;padding:10px 16px;border-radius:8px;font-size:13px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,0.4);max-width:80vw;text-align:center;';
+      document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.style.opacity = '1';
+    clearTimeout(t._hideTimer);
+    t._hideTimer = setTimeout(() => { t.style.opacity = '0'; }, 5000);
+  }
+
+  // ---------- APELIDO ----------
+  async function loadNickname(){
+    return await safeGet('nickname', false);
+  }
+
+  document.getElementById('nick-btn').addEventListener('click', submitNick);
+  document.getElementById('nick-input').addEventListener('keydown', e => { if(e.key==='Enter') submitNick(); });
+  document.getElementById('pass-input').addEventListener('keydown', e => { if(e.key==='Enter') submitNick(); });
+
+  const ROOM_PASSWORD = 'senha1234';
+
+  // Caminho de emergência, usado quando o serviço de login não responde.
+  async function entrarComSenhaLocal(apelido, senha, err){
+    if (senha !== ROOM_PASSWORD){ err.textContent = 'Senha incorreta.'; return; }
+    if (!apelido){ err.textContent = 'Digite um apelido.'; return; }
+    err.textContent = '';
+    await safeSet('nickname', apelido, false);
+    state.nickname = apelido;
+    await boot();
+  }
+
+  async function submitNick(){
+    const input = document.getElementById('nick-input');
+    const val = input.value.trim();
+    const err = document.getElementById('nick-err');
+    const pass = document.getElementById('pass-input').value;
+
+    if (MODO_LOGIN){
+      const btn = document.getElementById('nick-btn');
+      if (!val || !pass){
+        err.textContent = MODO_CONTA ? 'Preencha usuário e senha.' : 'Preencha a senha e um apelido.';
+        return;
+      }
+      err.textContent = 'Verificando…';
+      btn.disabled = true;
+      try{
+        const corta = new AbortController();
+        const alarme = setTimeout(() => corta.abort(), 10000);
+        const r = await fetch(AUTH_ENDPOINT, {
+          signal: corta.signal,
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(MODO_CONTA ? { usuario: val, senha: pass }
+                                          : { apelido: val, senha: pass })
+        });
+        clearTimeout(alarme);
+        const j = await r.json().catch(() => ({}));
+        // Rede de segurança: se o serviço de login não está configurado, está
+        // fora do ar, ou respondeu algo que não dá para entender, a sala NÃO
+        // pode ficar trancada — cai para a senha embutida. Vale para uma sala
+        // interna: melhor entrar com a senha antiga do que ninguém entrar.
+        const semServico = !j || (!j.ok && !j.erro) || /nao configurad/.test(j.erro || '');
+        if (semServico){
+          console.warn('[sala] serviço de login indisponível (' + (j.erro || 'resposta inválida') + ') — usando a senha embutida');
+          btn.disabled = false;
+          return entrarComSenhaLocal(val, pass, err);
+        }
+        if (!r.ok || !j.ok){
+          err.textContent = j.erro === 'usuario ou senha invalidos' ? 'Usuário ou senha inválidos.'
+            : j.erro === 'senha da sala incorreta' ? 'Senha da sala incorreta.'
+            : (j.erro || 'Não foi possível entrar.');
+          btn.disabled = false;
+          return;
+        }
+        await safeSet('sessao', JSON.stringify({ usuario: j.usuario, exp: j.exp, token: j.token }), false);
+        state.nickname = j.usuario;
+        err.textContent = '';
+        await boot();
+      }catch(e){
+        console.warn('[sala] não consegui falar com o serviço de login — usando a senha embutida', e);
+        btn.disabled = false;
+        return entrarComSenhaLocal(val, pass, err);
+      }
+      return;
+    }
+
+    if (pass !== ROOM_PASSWORD){ err.textContent = 'Senha incorreta.'; return; }
+    if (!val){ err.textContent = 'Digite um apelido.'; return; }
+    if (val.length > 24){ err.textContent = 'Apelido muito longo.'; return; }
+    err.textContent = '';
+    await safeSet('nickname', val, false);
+    state.nickname = val;
+    await boot();
+  }
+
+  document.getElementById('leave-btn').addEventListener('click', async () => {
+    await leaveVoice();
+    try{ await window.storage.delete('nickname', false); }catch(e){}
+    if (MODO_LOGIN){ try{ await window.storage.delete('sessao', false); }catch(e){} }
+    location.reload();
+  });
+
+  // ---------- NOME DO SERVIDOR ----------
+  async function loadServerName(){
+    const v = await safeGet('server-name', true);
+    if (v){ state.serverName = v; }
+    else { await safeSet('server-name', state.serverName, true); }
+  }
+  function renderServerName(){
+    document.getElementById('server-initial').textContent = initials(state.serverName);
+    const el = document.getElementById('server-name');
+    el.innerHTML = `<span>${escapeHtml(state.serverName)}</span>` +
+      (EH_DEV ? `<span class="dev-badge">dev</span>` : '') +
+      `<span class="edit-btn" id="rename-btn">editar</span>`;
+    document.getElementById('rename-btn').addEventListener('click', startRename);
+  }
+  function startRename(){
+    const el = document.getElementById('server-name');
+    el.innerHTML = `<input id="rename-input" maxlength="30" value="${escapeHtml(state.serverName)}">`;
+    const input = document.getElementById('rename-input');
+    input.focus(); input.select();
+    const commit = async () => {
+      const v = input.value.trim();
+      if (v){ state.serverName = v; await safeSet('server-name', v, true); }
+      renderServerName();
+    };
+    input.addEventListener('keydown', e => { if(e.key==='Enter') commit(); if(e.key==='Escape') renderServerName(); });
+    input.addEventListener('blur', commit);
+  }
+
+  // ---------- CANAIS DE TEXTO ----------
+  async function loadChannels(bruto){
+    const raw = bruto !== undefined ? bruto : await safeGet('channels', true);
+    let ch = null;
+    if (raw){ try{ ch = JSON.parse(raw); }catch(e){ ch = null; } }
+    if (!ch || !Array.isArray(ch) || ch.length === 0){
+      ch = [{id:'geral', name:'geral'}];
+      await safeSet('channels', JSON.stringify(ch), true);
+    }
+    state.channels = ch;
+    if (!state.activeChannelId || !ch.find(c => c.id === state.activeChannelId)){
+      state.activeChannelId = ch[0].id;
+    }
+  }
+
+  function renderChannels(){
+    const list = document.getElementById('channel-list');
+    const sig = JSON.stringify([state.channels, state.activeChannelId]);
+    if (list._sig === sig) return;
+    list._sig = sig;
+    list.innerHTML = '';
+    state.channels.forEach(c => {
+      const div = document.createElement('div');
+      div.className = 'channel-item' + (c.id === state.activeChannelId ? ' active' : '');
+      div.innerHTML = `<span class="hash">#</span><span>${escapeHtml(c.name)}</span>`;
+      div.addEventListener('click', () => switchChannel(c.id));
+      list.appendChild(div);
+    });
+    const activeCh = state.channels.find(c => c.id === state.activeChannelId);
+    document.getElementById('active-channel-name').textContent = activeCh ? activeCh.name : '';
+  }
+
+  function switchChannel(id){
+    if (id === state.activeChannelId) return;
+    state.activeChannelId = id;
+    state.pedirTudo = true;   // o delta ainda não conhece as mensagens deste canal
+    renderChannels();
+    loadMessages(true);
+  }
+
+  document.getElementById('add-channel-btn').addEventListener('click', () => {
+    document.getElementById('new-channel-row').classList.toggle('show');
+    document.getElementById('new-channel-input').focus();
+  });
+  document.getElementById('new-channel-confirm').addEventListener('click', createChannel);
+  document.getElementById('new-channel-input').addEventListener('keydown', e => { if(e.key==='Enter') createChannel(); });
+
+  async function createChannel(){
+    const input = document.getElementById('new-channel-input');
+    const raw = input.value.trim();
+    if (!raw) return;
+    const id = slugify(raw) + '-' + Math.random().toString(36).slice(2,6);
+    const name = slugify(raw);
+    const current = await safeGet('channels', true);
+    let ch = [];
+    try{ ch = JSON.parse(current) || []; }catch(e){ ch = []; }
+    ch.push({id, name});
+    await safeSet('channels', JSON.stringify(ch), true);
+    state.channels = ch;
+    input.value = '';
+    document.getElementById('new-channel-row').classList.remove('show');
+    switchChannel(id);
+  }
+
+  // ---------- MENSAGENS ----------
+  let lastRenderedCount = -1;
+  async function loadMessages(forceScroll, bruto){
+    const key = 'messages:' + state.activeChannelId;
+    const raw = bruto !== undefined ? bruto : await safeGet(key, true);
+    let arr = [];
+    if (raw){ try{ arr = JSON.parse(raw) || []; }catch(e){ arr = []; } }
+    renderMessages(arr, forceScroll);
+  }
+
+  function renderMessages(arr, forceScroll){
+    const box = document.getElementById('messages');
+    const wasAtBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
+
+    if (arr.length === 0){
+      box.innerHTML = `<div class="empty">Nenhuma mensagem ainda. Seja o primeiro a dizer oi 👋</div>`;
+      lastRenderedCount = 0;
+      return;
+    }
+    if (arr.length === lastRenderedCount && !forceScroll) return;
+    lastRenderedCount = arr.length;
+
+    box.innerHTML = arr.map(m => `
+      <div class="msg">
+        <div class="avatar" style="background:${colorFor(m.author)}">${escapeHtml(initials(m.author))}</div>
+        <div class="body">
+          <div class="meta"><span class="who">${escapeHtml(m.author)}</span><span class="ts">${timeFmt(m.ts)}</span></div>
+          <div class="text">${escapeHtml(m.text)}</div>
+        </div>
+      </div>
+    `).join('');
+
+    if (forceScroll || wasAtBottom){ box.scrollTop = box.scrollHeight; }
+  }
+
+  document.getElementById('send-btn').addEventListener('click', sendMessage);
+  document.getElementById('msg-input').addEventListener('keydown', e => { if(e.key==='Enter') sendMessage(); });
+
+  async function sendMessage(){
+    const input = document.getElementById('msg-input');
+    const text = input.value.trim();
+    if (!text) return;
+    const sendBtn = document.getElementById('send-btn');
+    input.value = '';
+    input.disabled = true;
+    sendBtn.disabled = true;
+    const prevLabel = sendBtn.textContent;
+    sendBtn.textContent = '...';
+
+    const key = 'messages:' + state.activeChannelId;
+    const raw = await safeGet(key, true);
+    let arr = [];
+    if (raw){ try{ arr = JSON.parse(raw) || []; }catch(e){ arr = []; } }
+    arr.push({ id: Date.now() + '-' + Math.random().toString(36).slice(2,7), author: state.nickname, text, ts: Date.now() });
+    if (arr.length > 200) arr = arr.slice(arr.length - 200);
+
+    const ok = await safeSet(key, JSON.stringify(arr), true);
+
+    input.disabled = false;
+    sendBtn.disabled = false;
+    sendBtn.textContent = prevLabel;
+
+    if (ok){
+      renderMessages(arr, true);
+    } else {
+      showToast('Não foi possível enviar. Tentando de novo em instantes…');
+      input.value = text;
+      setTimeout(async () => {
+        const ok2 = await safeSet(key, JSON.stringify(arr), true);
+        if (ok2){
+          input.value = '';
+          renderMessages(arr, true);
+        } else {
+          showToast('Falha ao enviar a mensagem. Tente novamente.');
+        }
+      }, 2000);
+    }
+  }
+
+  // ---------- MEMBROS / PRESENÇA (texto) ----------
+  // Uma linha por pessoa (mb:<apelido>) em vez de um mapa numa linha só. Antes
+  // todos reescreviam a MESMA linha a cada ciclo, e o banco serializa isso —
+  // com gente suficiente virava fila de espera. Agora cada um escreve a sua.
+  async function heartbeatAndLoadMembers(){
+    const now = window.agoraServidor ? window.agoraServidor() : Date.now();
+    const [, rows] = await Promise.all([
+      safeSet('mb:' + state.nickname, String(now), true, 1),
+      safeList('mb:')
+    ]);
+    if (!rows) return;
+    const members = {};
+    for (const r of rows){
+      const nome = r.key.slice(3);
+      const ts = Number(r.value) || 0;
+      if (nome && now - ts <= STALE_MEMBER_MS) members[nome] = ts;
+    }
+    members[state.nickname] = now;
+    state.members = members;
+    renderMembers();
+  }
+
+  function renderMembers(){
+    // compara com carimbos escritos por outras pessoas: relógio do servidor
+    const now = window.agoraServidor ? window.agoraServidor() : Date.now();
+    const names = Object.keys(state.members).sort();
+    const onlineCount = names.filter(n => now - state.members[n] < ONLINE_WINDOW_MS).length;
+
+    document.getElementById('online-count').textContent = onlineCount;
+    document.getElementById('members-title').textContent = 'Membros — ' + names.length;
+
+    const list = document.getElementById('members-list');
+    list.innerHTML = names.map(n => {
+      const on = now - state.members[n] < ONLINE_WINDOW_MS;
+      return `
+        <div class="member-row ${on ? 'on':'off'}">
+          <div class="avatar" style="background:${colorFor(n)}">${escapeHtml(initials(n))}
+            <div class="status-dot ${on?'on':'off'}"></div>
+          </div>
+          <div class="mname">${escapeHtml(n)}${n===state.nickname ? ' (você)':''}</div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  document.getElementById('member-toggle-btn').addEventListener('click', () => {
+    document.getElementById('members-panel').classList.toggle('hidden');
+  });
+
+  /* =========================================================================
+     VOZ EM GRUPO + COMPARTILHAMENTO DE TELA (malha WebRTC)
+
+     Cada participante de um canal de voz abre uma conexão com cada outro.
+     Quem tem o sessionId lexicograficamente menor faz a oferta; o outro responde.
+
+     Cada conexão nasce com 3 transceivers em ordem fixa:
+        0 = áudio do microfone
+        1 = áudio da tela compartilhada
+        2 = vídeo da tela compartilhada
+     Eles são criados vazios e preenchidos com replaceTrack(), então começar ou
+     parar de compartilhar a tela NÃO exige renegociar nada.
+
+     Sinalização pela mesma tabela room_kv, com chaves prefixadas pelo
+     destinatário (nunca read-modify-write numa chave compartilhada):
+        sdp:<quemResponde>:<quemOferece>:<epoch>:o   -> oferta
+        ans:<quemOferece>:<quemResponde>:<epoch>:a   -> resposta
+        vp:<canal>:<sessao>                          -> presença no canal de voz
+     ========================================================================= */
+
+  const VOICE = {
+    channels: [],
+    chan: null,
+    joined: false,
+    muted: false,
+    deafened: false,
+    micStream: null, micTrack: null,
+    screenStream: null, screenVideoTrack: null, screenAudioTrack: null, screenSurface: null,
+    peers: {},        // sessionId -> peer
+    presence: {},     // canal -> [entrada]
+    bySession: {},    // sessionId -> entrada
+    analysers: {},
+    sharers: [],
+    stageSid: null,
+    stageHidden: false,
+    timer: null,
+    ticker: null,
+    ice: null,
+    ultimaFaxina: 0,
+    cadencia: 0,
+    conhecidos: null,   // quem já estava no canal, para o bip de entrada/saída
+    busy: false,
+    speakRaf: null,
+    _sig: null,
+  };
+
+  async function loadVoiceChannels(bruto){
+    const raw = bruto !== undefined ? bruto : await safeGet('voice-channels', true);
+    let ch = null;
+    if (raw){ try{ ch = JSON.parse(raw); }catch(e){ ch = null; } }
+    if (!ch || !Array.isArray(ch) || ch.length === 0){
+      ch = [{ id:'voz-geral', name:'Geral' }];
+      await safeSet('voice-channels', JSON.stringify(ch), true);
+    }
+    VOICE.channels = ch;
+  }
+
+  document.getElementById('add-voice-btn').addEventListener('click', () => {
+    document.getElementById('new-voice-row').classList.toggle('show');
+    document.getElementById('new-voice-input').focus();
+  });
+  document.getElementById('new-voice-confirm').addEventListener('click', createVoiceChannel);
+  document.getElementById('new-voice-input').addEventListener('keydown', e => { if(e.key==='Enter') createVoiceChannel(); });
+
+  async function createVoiceChannel(){
+    const input = document.getElementById('new-voice-input');
+    const raw = input.value.trim();
+    if (!raw) return;
+    const id = 'voz-' + slugify(raw) + '-' + Math.random().toString(36).slice(2,6);
+    const current = await safeGet('voice-channels', true);
+    let ch = [];
+    try{ ch = JSON.parse(current) || []; }catch(e){ ch = []; }
+    ch.push({ id, name: raw.slice(0,24) });
+    await safeSet('voice-channels', JSON.stringify(ch), true);
+    VOICE.channels = ch;
+    input.value = '';
+    document.getElementById('new-voice-row').classList.remove('show');
+    VOICE._sig = null;
+    renderVoice();
+  }
+
+  // ---------- entrar / sair da chamada ----------
+  async function joinVoice(chanId){
+    if (VOICE.joined && VOICE.chan === chanId) return;
+    if (VOICE.joined) await leaveVoice(true);
+
+    try{
+      const r = await comPrazo(navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation:true, noiseSuppression:true, autoGainControl:true }
+      }), 12000, 'pedido de microfone');
+      if (r && r.__prazo){
+        VOICE.micStream = null; VOICE.micTrack = null;
+        showToast('O microfone não respondeu a tempo — você entrou só para ouvir. Veja se há um aviso de permissão pendente no navegador.');
+      } else {
+        VOICE.micStream = r;
+        VOICE.micTrack = VOICE.micStream.getAudioTracks()[0];
+        VOICE.micTrack.enabled = !VOICE.muted;
+        attachAnalyser(SID, VOICE.micStream);
+      }
+    }catch(e){
+      VOICE.micStream = null; VOICE.micTrack = null;
+      showToast('Sem acesso ao microfone — você entrou apenas para ouvir.');
+    }
+
+    // Resolve o TURN antes de abrir qualquer conexão. Sem endpoint configurado
+    // isso devolve na hora a lista fixa.
+    // Mesmo com o prazo interno, garante que ninguém fique preso aqui: sem
+    // resposta, entra com STUN e o TURN é tentado de novo na próxima vez.
+    const ice = await comPrazo(resolverIceServers(), 8000, 'credenciais do TURN');
+    VOICE.ice = (ice && ice.__prazo) ? ICE_SERVERS : ice;
+    if (ice && ice.__prazo){
+      window.__SALA_TURN = 'FALHOU: sem resposta em 8s';
+      showToast('O servidor de retransmissão não respondeu. Entrando assim mesmo — em rede restrita a chamada pode não conectar.');
+    }
+
+    VOICE.chan = chanId;
+    VOICE.joined = true;
+    VOICE.conhecidos = null;   // recomeça a contagem do bip
+    INC++;   // avisa os outros que este é um par novo, e não o antigo remendado
+    document.body.classList.add('in-call');
+
+    await safeDeletePrefix('sdp:' + SID + ':');
+    await safeDeletePrefix('ans:' + SID + ':');
+
+    resumeAudio();
+    startSpeakLoop();
+    VOICE._sig = null;
+    restartVoiceTimer();
+    voiceTick();
+  }
+
+  async function leaveVoice(keepTimer){
+    if (!VOICE.joined) return;
+    const chan = VOICE.chan;
+    VOICE.joined = false;
+    VOICE.conhecidos = null;
+
+    stopScreen(true);
+    Object.keys(VOICE.peers).forEach(destroyPeer);
+    if (VOICE.micStream) VOICE.micStream.getTracks().forEach(t => { try{ t.stop(); }catch(e){} });
+    VOICE.micStream = null; VOICE.micTrack = null;
+    delete VOICE.analysers[SID];
+    stopSpeakLoop();
+    document.body.classList.remove('in-call');
+
+    await safeDelete('vp:' + chan + ':' + SID, true);
+    await safeDeletePrefix('sdp:' + SID + ':');
+    await safeDeletePrefix('ans:' + SID + ':');
+
+    VOICE._sig = null;
+    if (!keepTimer) restartVoiceTimer();
+    renderVoice();
+    updateStage();
+  }
+
+  // Chrome estrangula setInterval para ~1x por minuto em aba de segundo plano.
+  // Com isso a presença expira e a chamada cai sozinha assim que alguém
+  // minimiza a janela ou troca de aba — provavelmente a causa mais comum de
+  // "caiu do nada". Timer dentro de um Web Worker não sofre esse limite.
+  function makeTicker(fn){
+    let worker = null, fallback = null;
+    try{
+      const src = 'let id=null;onmessage=function(e){if(id){clearInterval(id);id=null;}' +
+                  'if(e.data>0){id=setInterval(function(){postMessage(1);},e.data);}};';
+      worker = new Worker(URL.createObjectURL(new Blob([src], { type:'text/javascript' })));
+      worker.onmessage = () => fn();
+    }catch(e){ worker = null; }
+    return {
+      viaWorker: !!worker,
+      set(ms){
+        if (worker){ worker.postMessage(ms); return; }
+        if (fallback) clearInterval(fallback);
+        fallback = setInterval(fn, ms);
+      }
+    };
+  }
+
+  // Enquanto há par negociando, o ciclo precisa ser rápido. Depois que todos
+  // conectaram, só a presença importa — e aí vale poupar o banco.
+  function ajustarCadencia(){
+    if (!VOICE.joined) return;
+    const pares = Object.values(VOICE.peers);
+    const negociando = pares.some(p => !p.pc || p.pc.connectionState !== 'connected');
+    const alvo = negociando ? VOICE_TICK_MS : VOICE_CALMO_MS;
+    if (VOICE.cadencia !== alvo && VOICE.ticker){
+      VOICE.cadencia = alvo;
+      VOICE.ticker.set(alvo);
+    }
+  }
+
+  function restartVoiceTimer(){
+    if (!VOICE.ticker){
+      VOICE.ticker = makeTicker(voiceTick);
+      window.__SALA_TICKER = VOICE.ticker.viaWorker ? 'worker' : 'setInterval';
+    }
+    VOICE.cadencia = VOICE.joined ? VOICE_TICK_MS : VOICE_IDLE_TICK_MS;
+    VOICE.ticker.set(VOICE.cadencia);
+  }
+
+  // Volta da rede ou da aba: força um ciclo imediato em vez de esperar o timer.
+  window.addEventListener('online', () => { if (VOICE.joined) voiceTick(); });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && VOICE.joined) voiceTick();
+  });
+
+  // ---------- loop de presença + sinalização ----------
+  async function voiceTick(){
+    if (VOICE.busy) return;
+    VOICE.busy = true;
+    try{
+      const now = Date.now();                    // relógio local: só para contas internas
+      const agora = window.agoraServidor ? window.agoraServidor() : now;  // comparado entre pessoas
+
+      // Escrever a própria presença e ler a dos outros são independentes: em
+      // paralelo o ciclo custa uma ida ao banco em vez de duas.
+      const escrevendo = VOICE.joined
+        ? safeSet('vp:' + VOICE.chan + ':' + SID, JSON.stringify({
+            name: state.nickname, session: SID, chan: VOICE.chan, ts: agora, inc: INC,
+            muted: VOICE.muted || !VOICE.micTrack, sharing: !!VOICE.screenVideoTrack
+          }), true, 1)
+        : Promise.resolve(true);
+
+      // Faxina de sinalização abandonada, no máximo uma vez por minuto. Sem
+      // await: não vale atrasar o ciclo por causa de limpeza.
+      if (VOICE.joined && now - VOICE.ultimaFaxina > 60000){
+        VOICE.ultimaFaxina = now;
+        safeDeleteOlderThan('sdp:', 300000);
+        safeDeleteOlderThan('ans:', 300000);
+        safeDeleteOlderThan('mb:', STALE_MEMBER_MS * 2);
+      }
+
+      const [, rows] = await Promise.all([escrevendo, safeList('vp:')]);
+      if (rows){
+        const presence = {}, bySession = {};
+        for (const r of rows){
+          let e = null;
+          try{ e = JSON.parse(r.value); }catch(_){ continue; }
+          if (!e || !e.session || !e.chan) continue;
+          if (agora - e.ts > VOICE_STALE_MS){
+            if (!VOICE.joined || e.session !== SID) safeDelete(r.key, true);
+            continue;
+          }
+          (presence[e.chan] = presence[e.chan] || []).push(e);
+          bySession[e.session] = e;
+        }
+        VOICE.presence = presence;
+        VOICE.bySession = bySession;
+      }
+
+      if (VOICE.joined){
+        const mine = (VOICE.presence[VOICE.chan] || []).filter(e => e.session !== SID);
+        const wanted = new Set(mine.map(e => e.session));
+
+        // Na primeira passada só memoriza quem já estava — senão entrar numa
+        // sala cheia dispararia uma salva de bips. Depois disso, um bip por
+        // tick para chegadas e um para saídas, mesmo que venham vários juntos.
+        if (VOICE.conhecidos === null){
+          VOICE.conhecidos = wanted;
+        } else {
+          let chegou = false, saiu = false;
+          for (const s of wanted) if (!VOICE.conhecidos.has(s)) chegou = true;
+          for (const s of VOICE.conhecidos) if (!wanted.has(s)) saiu = true;
+          VOICE.conhecidos = wanted;
+          if (chegou) tocarBip(true);
+          if (saiu) tocarBip(false);
+        }
+        // A presença é só uma DICA de quem está no canal. Se a mídia continua
+        // chegando, a pessoa está aí — e derrubar uma conexão saudável porque o
+        // Supabase demorou a responder era o que fazia a call inteira cair de
+        // uma vez. Quem sai de verdade some pelo estado da conexão, não por isto.
+        for (const sid of Object.keys(VOICE.peers)){
+          const p = VOICE.peers[sid];
+          if (wanted.has(sid)){ p.visto = now; continue; }
+          const conectado = p.pc && p.pc.connectionState === 'connected';
+          if (conectado && now - (p.visto || p.startedAt || now) < 120000) continue;
+          destroyPeer(sid);
+        }
+        for (const e of mine){
+          const atual = VOICE.peers[e.session];
+          // Saiu e voltou sem recarregar a página: mesmo sessionId, encarnação
+          // nova. O par antigo está morto dos dois lados — recomeça do zero em
+          // vez de tentar remendar uma conexão que nunca vai voltar.
+          if (atual && atual.inc !== e.inc){ destroyPeer(e.session); }
+          if (!VOICE.peers[e.session]) createPeer(e.session, e.name, e.inc);
+          else atual.name = e.name;
+        }
+        await signalingPass();
+      } else if (Object.keys(VOICE.peers).length){
+        Object.keys(VOICE.peers).forEach(destroyPeer);
+      }
+
+      renderVoice();
+      updateStage();
+      ajustarCadencia();
+    } finally {
+      VOICE.busy = false;
+    }
+  }
+
+  // ---------- peers ----------
+  function createPeer(sid, name, inc){
+    const p = {
+      sid, name, inc,
+      offerer: SID < sid,
+      pc: null, send: null,
+      epoch: 0, tries: 0, appliedEpoch: -1, quedaEm: 0, mortoEm: 0, visto: 0,
+      screen: new MediaStream(),
+      audioEl: null,
+      startedAt: 0,
+      gotMic: false,
+      dead: false,
+    };
+    VOICE.peers[sid] = p;
+    buildPc(p);
+  }
+
+  function destroyPeer(sid){
+    const p = VOICE.peers[sid];
+    if (!p) return;
+    if (p.pc){ try{ p.pc.close(); }catch(e){} }
+    if (p.audioEl){ try{ p.audioEl.srcObject = null; p.audioEl.remove(); }catch(e){} }
+    delete VOICE.analysers[sid];
+    delete VOICE.peers[sid];
+    // Limpa as duas direções: o que ele escreveu para mim E o que eu escrevi
+    // para ele. Sobra deste segundo grupo é o que faz uma reconexão pegar uma
+    // oferta velha e travar.
+    safeDeletePrefix('sdp:' + SID + ':' + sid + ':');
+    safeDeletePrefix('ans:' + SID + ':' + sid + ':');
+    safeDeletePrefix('sdp:' + sid + ':' + SID + ':');
+    safeDeletePrefix('ans:' + sid + ':' + SID + ':');
+    VOICE._sig = null;
+  }
+
+  function buildPc(p){
+    if (p.pc){ try{ p.pc.close(); }catch(e){} }
+    const pc = new RTCPeerConnection({
+      iceServers: VOICE.ice || ICE_SERVERS,
+      bundlePolicy: 'max-bundle',
+      iceTransportPolicy: window.__SALA_SO_RELAY ? 'relay' : 'all'
+    });
+    p.pc = pc;
+    p.send = null;
+    p.gotMic = false;
+    p.startedAt = Date.now();
+    p.quedaEm = 0;
+    p.screen = new MediaStream();
+
+    pc.addEventListener('track', ev => onRemoteTrack(p, ev));
+    pc.addEventListener('connectionstatechange', () => {
+      const st = pc.connectionState;
+      if (st === 'connected'){
+        // Zera o orçamento de tentativas. Sem isso, quatro engasgos ao longo de
+        // uma call longa marcavam o par como morto para sempre.
+        p.tries = 0; p.dead = false; p.quedaEm = 0;
+      } else if (st === 'disconnected'){
+        if (!p.quedaEm) p.quedaEm = Date.now();
+      }
+      VOICE._sig = null;
+      renderVoice();
+      updateStage();
+    });
+
+    if (p.offerer) makeOffer(p);
+  }
+
+  async function makeOffer(p){
+    const pc = p.pc;
+    const epoch = nextEpoch();
+    p.epoch = epoch;
+    try{
+      const tMic  = pc.addTransceiver('audio', { direction:'sendrecv' });
+      const tScrA = pc.addTransceiver('audio', { direction:'sendrecv' });
+      const tScrV = pc.addTransceiver('video', { direction:'sendrecv' });
+      p.send = { mic: tMic.sender, scrA: tScrA.sender, scrV: tScrV.sender };
+      applyLocalTracks(p);
+
+      const offer = await pc.createOffer();
+      if (p.pc !== pc) return;
+      await pc.setLocalDescription(offer);
+      await waitIce(pc);
+      if (p.pc !== pc) return;
+      await safeSet('sdp:' + p.sid + ':' + SID + ':' + epoch + ':o', JSON.stringify(pc.localDescription), true, 1);
+    }catch(e){
+      console.error('makeOffer falhou', e);
+    }
+  }
+
+  async function acceptOffer(p, desc, epoch){
+    // Se a conexão atual já foi negociada, uma oferta nova significa que o outro
+    // lado recomeçou — descartamos e montamos uma conexão limpa.
+    if (!p.pc || p.pc.currentRemoteDescription || p.pc.signalingState !== 'stable'){
+      buildPc(p);
+    }
+    const pc = p.pc;
+    try{
+      await pc.setRemoteDescription(desc);
+      const tr = pc.getTransceivers();
+      p.send = { mic: tr[0] && tr[0].sender, scrA: tr[1] && tr[1].sender, scrV: tr[2] && tr[2].sender };
+      tr.forEach(t => { try{ t.direction = 'sendrecv'; }catch(e){} });
+      applyLocalTracks(p);
+
+      const answer = await pc.createAnswer();
+      if (p.pc !== pc) return;
+      await pc.setLocalDescription(answer);
+      await waitIce(pc);
+      if (p.pc !== pc) return;
+      await safeSet('ans:' + p.sid + ':' + SID + ':' + epoch + ':a', JSON.stringify(pc.localDescription), true, 1);
+      p.appliedEpoch = epoch;
+    }catch(e){
+      console.error('acceptOffer falhou', e);
+    }
+  }
+
+  async function signalingPass(){
+    const peers = Object.values(VOICE.peers);
+    const saudavel = pc => pc && pc.connectionState === 'connected';
+
+    // Quem responde precisa continuar procurando ofertas enquanto o par não
+    // estiver saudável. A condição anterior parava de procurar assim que uma
+    // oferta era aplicada uma vez — então uma renegociação vinda do outro lado
+    // nunca era vista, e o par só voltava quando o watchdog local estourava.
+    const waitingOffer  = peers.some(p => !p.offerer && !saudavel(p.pc));
+    const waitingAnswer = peers.some(p =>  p.offerer && p.pc && !p.pc.currentRemoteDescription);
+
+    if (waitingOffer){
+      const rows = await safeList('sdp:' + SID + ':');
+
+      // Fica só com a oferta mais recente de cada par; as anteriores viram lixo.
+      const melhor = {};
+      for (const r of (rows || [])){
+        const parts = r.key.split(':');           // sdp : eu : ofertante : epoch : o
+        const from = parts[2], epoch = Number(parts[3]);
+        const p = VOICE.peers[from];
+        if (!p || !(epoch > p.appliedEpoch)){ safeDelete(r.key, true); continue; }
+        if (melhor[from] && melhor[from].epoch >= epoch){ safeDelete(r.key, true); continue; }
+        if (melhor[from]) safeDelete(melhor[from].key, true);
+        melhor[from] = { key: r.key, value: r.value, epoch, p };
+      }
+
+      // Em paralelo, e não em série: cada acceptOffer espera o ICE (até 4s), e
+      // em fila o último par de uma sala grande estouraria o watchdog antes
+      // mesmo de ser atendido.
+      await Promise.all(Object.values(melhor).map(async item => {
+        let desc = null;
+        try{ desc = JSON.parse(item.value); }catch(e){ safeDelete(item.key, true); return; }
+        await acceptOffer(item.p, desc, item.epoch);
+        safeDelete(item.key, true);
+      }));
+    }
+
+    if (waitingAnswer){
+      const rows = await safeList('ans:' + SID + ':');
+      for (const r of (rows || [])){
+        const parts = r.key.split(':');           // ans : eu : respondente : epoch : a
+        const from = parts[2], epoch = Number(parts[3]);
+        const p = VOICE.peers[from];
+        if (!p || !p.pc){ safeDelete(r.key, true); continue; }
+        if (epoch !== p.epoch){ safeDelete(r.key, true); continue; }
+        if (p.pc.currentRemoteDescription){ safeDelete(r.key, true); continue; }
+        try{ await p.pc.setRemoteDescription(JSON.parse(r.value)); }catch(e){ console.error('setRemote(answer)', e); }
+        safeDelete(r.key, true);
+      }
+    }
+
+    // Watchdog. 'failed' é definitivo e refaz na hora; 'disconnected' costuma se
+    // resolver sozinho em poucos segundos, então ganha uma carência antes de
+    // pagar o custo de uma renegociação inteira.
+    const agora = Date.now();
+    for (const p of peers){
+      if (!p.pc || !VOICE.peers[p.sid]) continue;
+      const st = p.pc.connectionState;
+
+      let refazer = false;
+      if (st === 'failed') refazer = true;
+      else if (st === 'disconnected') refazer = !!p.quedaEm && (agora - p.quedaEm > PEER_DROP_GRACE_MS);
+      else if (st !== 'connected') refazer = agora - p.startedAt > PEER_TIMEOUT_MS;
+      if (!refazer) continue;
+
+      if (p.tries >= MAX_PEER_TRIES){
+        // Não desiste para sempre: se a rede voltar, tenta de novo sozinho em
+        // vez de exigir que a pessoa saia e entre na chamada.
+        if (!p.mortoEm){ p.mortoEm = agora; p.dead = true; VOICE._sig = null; }
+        if (agora - p.mortoEm < 60000) continue;
+        p.tries = 0; p.mortoEm = 0; p.dead = false; VOICE._sig = null;
+      }
+
+      p.tries++;
+      p.appliedEpoch = -1;
+      await safeDeletePrefix('sdp:' + SID + ':' + p.sid + ':');
+      await safeDeletePrefix('ans:' + SID + ':' + p.sid + ':');
+      buildPc(p);
+    }
+  }
+
+  // Antes esperávamos a coleta de candidatos TERMINAR, ou 4 segundos — o que
+  // viesse primeiro. Esses 4s entravam em cada conexão, e numa malha de 8
+  // pessoas isso é meia dúzia de esperas empilhadas.
+  //
+  // Na prática a conexão fecha com o primeiro candidato que atravessa NAT
+  // (srflx, do STUN, ou relay, do TURN). Assim que aparece um, damos um
+  // instante para os irmãos dele chegarem e seguimos. Os candidatos que
+  // sobrarem não se perdem: continuam sendo coletados e valem para o
+  // ICE renegociar sozinho se o caminho escolhido cair.
+  function waitIce(pc){
+    if (pc.iceGatheringState === 'complete') return Promise.resolve();
+    return new Promise(resolve => {
+      let pronto = false;
+      let temUsavel = false;
+      let graca = null;
+
+      const encerrar = () => {
+        if (pronto) return;
+        pronto = true;
+        pc.removeEventListener('icecandidate', onCand);
+        pc.removeEventListener('icegatheringstatechange', onEstado);
+        clearTimeout(graca);
+        clearTimeout(teto);
+        resolve();
+      };
+      const onCand = (ev) => {
+        if (!ev.candidate){ encerrar(); return; }        // coleta terminou
+        if (temUsavel) return;
+        if (/ typ (srflx|relay)/.test(ev.candidate.candidate || '')){
+          temUsavel = true;
+          graca = setTimeout(encerrar, 350);
+        }
+      };
+      const onEstado = () => { if (pc.iceGatheringState === 'complete') encerrar(); };
+
+      pc.addEventListener('icecandidate', onCand);
+      pc.addEventListener('icegatheringstatechange', onEstado);
+      const teto = setTimeout(encerrar, 2500);           // rede muito ruim: não trava
+    });
+  }
+
+  function applyLocalTracks(p){
+    if (!p.send) return;
+    const put = (sender, track) => { if (sender){ try{ sender.replaceTrack(track || null); }catch(e){} } };
+    put(p.send.mic,  VOICE.micTrack);
+    put(p.send.scrA, VOICE.screenAudioTrack);
+    put(p.send.scrV, VOICE.screenVideoTrack);
+    tuneScreenSender(p);
+  }
+
+  // Sem isto o navegador derruba a resolução da tela compartilhada para caber
+  // num bitrate baixo — é o que deixa texto compartilhado ilegível.
+  function tuneScreenSender(p){
+    const s = p.send && p.send.scrV;
+    if (!s || !VOICE.screenVideoTrack) return;
+    try{
+      const prm = s.getParameters();
+      const captura = VOICE.screenSurface === 'captura';
+      // Tela parada com texto: preserva resolução. Console/câmera em movimento:
+      // preserva a fluidez, porque 30fps picotado incomoda mais que menos nitidez.
+      prm.degradationPreference = captura ? 'maintain-framerate' : 'maintain-resolution';
+      if (!prm.encodings || !prm.encodings.length) prm.encodings = [{}];
+      prm.encodings[0].maxBitrate = captura ? 4000000 : 3000000;
+      prm.encodings[0].maxFramerate = captura ? 60 : 30;
+      s.setParameters(prm);
+    }catch(e){}
+  }
+
+  function onRemoteTrack(p, ev){
+    const track = ev.track;
+    let idx = -1;
+    try{ idx = p.pc.getTransceivers().indexOf(ev.transceiver); }catch(e){}
+    const isMic = idx === 0 || (idx < 0 && track.kind === 'audio' && !p.gotMic);
+
+    if (isMic){
+      p.gotMic = true;
+      if (!p.audioEl){
+        const a = document.createElement('audio');
+        a.autoplay = true;
+        a.setAttribute('playsinline','');
+        document.getElementById('audio-sink').appendChild(a);
+        p.audioEl = a;
+      }
+      const ms = new MediaStream([track]);
+      p.audioEl.srcObject = ms;
+      p.audioEl.muted = VOICE.deafened;
+      p.audioEl.play().catch(() => showUnblockAudio());
+      attachAnalyser(p.sid, ms);
+      return;
+    }
+
+    // Áudio (1) e vídeo (2) da tela entram no MediaStream persistente do peer.
+    // Como o <video> do palco aponta para esse mesmo objeto, as faixas aparecem
+    // sozinhas quando o outro lado começa a compartilhar — sem tocar no DOM.
+    try{ p.screen.addTrack(track); }catch(e){}
+    track.addEventListener('ended', () => { try{ p.screen.removeTrack(track); }catch(e){} });
+    track.addEventListener('unmute', updateStage);
+    track.addEventListener('mute', updateStage);
+    updateStage();
+  }
+
+  // ---------- microfone / mudo / silenciar ----------
+  function toggleMute(){
+    VOICE.muted = !VOICE.muted;
+    if (VOICE.micTrack) VOICE.micTrack.enabled = !VOICE.muted;
+    if (!VOICE.muted && VOICE.deafened) { setDeafened(false); return; }
+    VOICE._sig = null;
+    renderVoice();
+  }
+
+  function setDeafened(v){
+    VOICE.deafened = v;
+    Object.values(VOICE.peers).forEach(p => { if (p.audioEl) p.audioEl.muted = v; });
+    const cur = VOICE.sharers.find(s => s.sid === VOICE.stageSid);
+    const sv = document.getElementById('stage-video');
+    if (sv && cur && !cur.self) sv.muted = v;
+    if (v){
+      VOICE.muted = true;
+      if (VOICE.micTrack) VOICE.micTrack.enabled = false;
+    }
+    VOICE._sig = null;
+    renderVoice();
+  }
+
+  function toggleDeafen(){ setDeafened(!VOICE.deafened); }
+
+  // ---------- bip de entrada e saída (só no ambiente de teste) ----------
+  // Som gerado na hora, sem arquivo: mantém a sala num único HTML e evita
+  // depender de um servidor de assets.
+  window.__SALA_BIPS = { entrou: 0, saiu: 0 };
+
+  function tocarBip(entrando){
+    if (!RECURSOS_NOVOS) return;
+    window.__SALA_BIPS[entrando ? 'entrou' : 'saiu']++;
+    if (VOICE.deafened) return;   // quem está no modo surdo não ouve nem o bip
+    try{
+      resumeAudio();
+      if (!AC) return;
+      const t = AC.currentTime;
+      const osc = AC.createOscillator();
+      const vol = AC.createGain();
+      osc.type = 'sine';
+      // sobe quando alguém chega, desce quando alguém sai
+      const [de, para] = entrando ? [520, 784] : [660, 392];
+      osc.frequency.setValueAtTime(de, t);
+      osc.frequency.exponentialRampToValueAtTime(para, t + 0.11);
+      // envelope suave: sem isso o corte seco vira um estalo
+      vol.gain.setValueAtTime(0.0001, t);
+      vol.gain.exponentialRampToValueAtTime(0.50, t + 0.02);
+      vol.gain.exponentialRampToValueAtTime(0.0001, t + 0.24);
+      osc.connect(vol);
+      vol.connect(AC.destination);
+      osc.start(t);
+      osc.stop(t + 0.26);
+    }catch(e){}
+  }
+
+  // ---------- indicador de quem está falando ----------
+  let AC = null;
+  function resumeAudio(){
+    try{
+      AC = AC || new (window.AudioContext || window.webkitAudioContext)();
+      if (AC.state === 'suspended') AC.resume();
+    }catch(e){}
+  }
+  function attachAnalyser(id, stream){
+    try{
+      resumeAudio();
+      if (!AC) return;
+      const src = AC.createMediaStreamSource(stream);
+      const an = AC.createAnalyser();
+      an.fftSize = 512;
+      src.connect(an);
+      VOICE.analysers[id] = { an, data: new Uint8Array(an.fftSize) };
+    }catch(e){}
+  }
+  function startSpeakLoop(){
+    if (VOICE.speakRaf) return;
+    const step = () => {
+      for (const id in VOICE.analysers){
+        const a = VOICE.analysers[id];
+        a.an.getByteTimeDomainData(a.data);
+        let sum = 0;
+        for (let i=0;i<a.data.length;i++){ const v = (a.data[i]-128)/128; sum += v*v; }
+        const rms = Math.sqrt(sum / a.data.length);
+        const on = rms > 0.025 && !(id === SID && VOICE.muted);
+        const el = document.querySelector('.vo-row[data-sid="' + id + '"]');
+        if (el) el.classList.toggle('speaking', on);
+      }
+      VOICE.speakRaf = requestAnimationFrame(step);
+    };
+    VOICE.speakRaf = requestAnimationFrame(step);
+  }
+  function stopSpeakLoop(){
+    if (VOICE.speakRaf) cancelAnimationFrame(VOICE.speakRaf);
+    VOICE.speakRaf = null;
+  }
+
+  function showUnblockAudio(){
+    document.getElementById('unblock-audio').classList.add('show');
+  }
+  document.getElementById('unblock-audio').addEventListener('click', () => {
+    resumeAudio();
+    Object.values(VOICE.peers).forEach(p => { if (p.audioEl) p.audioEl.play().catch(()=>{}); });
+    const sv = document.getElementById('stage-video');
+    if (sv) sv.play().catch(()=>{});
+    document.getElementById('unblock-audio').classList.remove('show');
+  });
+
+  // ---------- compartilhar tela ----------
+  // modo 'aba'  -> só uma aba do navegador, com o áudio SÓ dela. Não captura o
+  //                som da chamada, então não dá eco.
+  // modo 'tela' -> tela inteira. O áudio é o do sistema todo, o que inclui a voz
+  //                das outras pessoas saindo do seu alto-falante — e volta para
+  //                elas como eco. Não há como subtrair isso depois.
+  async function startScreen(modo){
+    if (!VOICE.joined){
+      const target = VOICE.chan || (VOICE.channels[0] && VOICE.channels[0].id) || 'voz-geral';
+      await joinVoice(target);
+    }
+    const soAba = modo === 'aba';
+    let s;
+    try{
+      const video = { frameRate: { ideal:30, max:60 }, width: { ideal:1920 }, height: { ideal:1080 } };
+      if (soAba) video.displaySurface = 'browser';   // já abre o seletor na aba
+      s = await navigator.mediaDevices.getDisplayMedia({
+        video,
+        audio: { echoCancellation:false, noiseSuppression:false, autoGainControl:false },
+        // Opções só do Chrome/Edge (ignoradas nos outros navegadores):
+        systemAudio: soAba ? 'exclude' : 'include',
+        selfBrowserSurface: 'exclude', // evita escolher a própria aba da sala (efeito túnel)
+        surfaceSwitching: 'include'    // permite trocar a origem sem reiniciar a transmissão
+      });
+    }catch(e){
+      showToast('Compartilhamento cancelado ou bloqueado. Se estiver dentro de um preview em iframe, abra o link publicado numa aba própria do navegador.');
+      return;
+    }
+
+    VOICE.screenStream = s;
+    VOICE.screenVideoTrack = s.getVideoTracks()[0] || null;
+    VOICE.screenAudioTrack = s.getAudioTracks()[0] || null;
+    if (VOICE.screenVideoTrack){
+      try{ VOICE.screenVideoTrack.contentHint = 'detail'; }catch(e){}
+      VOICE.screenVideoTrack.addEventListener('ended', () => stopScreen());
+    }
+    // O áudio isolado só existe quando a origem é uma ABA do navegador. Janela
+    // não tem captura de áudio no Chrome, e tela inteira leva o som do sistema
+    // todo. Como isso não dá para contornar em código, o app pelo menos avisa
+    // com precisão o que está sendo enviado.
+    VOICE.screenSurface = 'desconhecido';
+    try{
+      const st = VOICE.screenVideoTrack && VOICE.screenVideoTrack.getSettings
+        ? VOICE.screenVideoTrack.getSettings() : null;
+      if (st && st.displaySurface) VOICE.screenSurface = st.displaySurface;
+    }catch(e){}
+
+    const temAudio = !!VOICE.screenAudioTrack;
+    const avisos = {
+      'browser:1': 'Enviando a aba com o áudio só dela — o resto do computador não vai junto, e não dá eco.',
+      'browser:0': 'Aba sem áudio. Para enviar o som dela, marque "Compartilhar áudio da guia" na janela de seleção.',
+      'monitor:1': 'ATENÇÃO: o áudio do sistema inclui a voz das outras pessoas saindo do seu alto-falante, e vai voltar para elas como eco. Para evitar, compartilhe só a aba.',
+      'monitor:0': 'Tela inteira sem áudio — e é assim que não dá eco. Para enviar som de um site, compartilhe a aba dele.',
+      'window:1':  'Enviando a janela com áudio.',
+      'window:0':  'O Chrome não captura áudio de janelas. Para enviar som, compartilhe uma aba do navegador em vez da janela.'
+    };
+    const aviso = avisos[VOICE.screenSurface + ':' + (temAudio ? 1 : 0)];
+    if (aviso) showToast(aviso);
+    else if (!temAudio) showToast('Transmitindo sem áudio. Compartilhe uma aba do navegador e marque "Compartilhar áudio da guia" para enviar o som.');
+
+    Object.values(VOICE.peers).forEach(applyLocalTracks);
+    VOICE.stageHidden = false;
+    VOICE.stageSid = SID;
+    VOICE._sig = null;
+    voiceTick();
+  }
+
+  // ---------- câmera / placa de captura ----------
+  // Não é compartilhamento de tela: é um dispositivo de vídeo. Mas o resultado
+  // entra nos MESMOS transceivers de tela (1 = áudio, 2 = vídeo), então quem
+  // assiste vê no palco sem nenhuma mudança do outro lado.
+  // Traduz o erro do navegador para algo acionável. "Não funcionou" não ajuda
+  // ninguém; saber que a placa está ocupada pelo OBS, sim.
+  function explicarErroMidia(e){
+    const n = (e && e.name) || '';
+    if (n === 'NotReadableError' || n === 'TrackStartError')
+      return 'O aparelho está ocupado por outro programa. Feche o OBS, o software da placa (Elgato/AVerMedia), Teams ou Meet e tente de novo — no Windows a placa aceita um programa por vez.';
+    if (n === 'NotAllowedError' || n === 'PermissionDeniedError')
+      return 'O navegador bloqueou o acesso. Clique no cadeado da barra de endereço e libere Câmera e Microfone para este site.';
+    if (n === 'NotFoundError' || n === 'DevicesNotFoundError')
+      return 'O aparelho sumiu da lista. Confira o cabo USB e se o console está ligado — algumas placas só aparecem com sinal de entrada.';
+    if (n === 'OverconstrainedError')
+      return 'A placa não aceitou a resolução pedida. Tentei de novo sem exigência e ainda assim falhou.';
+    if (n === 'AbortError')
+      return 'O driver da placa recusou a abertura. Desconecte e reconecte o USB.';
+    return 'Erro do navegador: ' + n + (e && e.message ? ' — ' + e.message : '');
+  }
+
+  // Tenta primeiro na qualidade boa; se a placa recusar, tenta de novo sem
+  // exigir nada. Muita placa USB só entrega formatos específicos.
+  async function abrirDispositivo(idVideo, idAudio){
+    const audio = idAudio ? {
+      deviceId: { exact: idAudio },
+      echoCancellation: false, noiseSuppression: false, autoGainControl: false
+    } : false;
+
+    const tentativas = [
+      { video: { deviceId: { exact: idVideo }, width: { ideal:1920 }, height: { ideal:1080 }, frameRate: { ideal:60 } }, audio },
+      { video: { deviceId: { exact: idVideo } }, audio },
+      { video: { deviceId: idVideo }, audio: idAudio ? { deviceId: idAudio } : false },
+    ];
+    let ultimo = null;
+    for (const c of tentativas){
+      try{ return { stream: await navigator.mediaDevices.getUserMedia(c) }; }
+      catch(e){ ultimo = e; console.warn('[sala] tentativa de abrir dispositivo falhou:', e.name, e.message); }
+    }
+    return { erro: ultimo };
+  }
+
+  async function abrirEscolhaDispositivo(){
+    let dispositivos = [];
+    try{
+      dispositivos = await navigator.mediaDevices.enumerateDevices();
+      // Os nomes só aparecem depois que a permissão é dada uma vez.
+      if (!dispositivos.some(d => d.kind === 'videoinput' && d.label)){
+        const tmp = await navigator.mediaDevices.getUserMedia({ video: true });
+        tmp.getTracks().forEach(t => { try{ t.stop(); }catch(e){} });
+        dispositivos = await navigator.mediaDevices.enumerateDevices();
+      }
+    }catch(e){
+      showToast(explicarErroMidia(e));
+      return;
+    }
+
+    const videos = dispositivos.filter(d => d.kind === 'videoinput');
+    const audios = dispositivos.filter(d => d.kind === 'audioinput');
+    console.info('[sala] dispositivos de vídeo:', videos.map(d => d.label || d.deviceId));
+    console.info('[sala] entradas de áudio:', audios.map(d => d.label || d.deviceId));
+    if (!videos.length){
+      showToast('Nenhum dispositivo de vídeo encontrado. Se a placa é USB, confira o cabo e feche programas que possam estar usando ela.');
+      return;
+    }
+
+    const opcoes = (lista, rotulo) => lista.map((d, i) =>
+      '<option value="' + escapeHtml(d.deviceId) + '">' +
+      escapeHtml(d.label || (rotulo + ' ' + (i + 1))) + '</option>').join('');
+
+    const modal = document.createElement('div');
+    modal.id = 'modal-captura';
+    modal.className = 'modal';
+    modal.innerHTML =
+      '<div class="modal-card">' +
+        '<div class="modal-header"><span>Câmera ou placa de captura</span>' +
+          '<span class="modal-close" id="cap-x">✕</span></div>' +
+        '<div style="padding:18px">' +
+          '<div class="linha"><label>Vídeo</label><select id="cap-video">' + opcoes(videos, 'Câmera') + '</select></div>' +
+          '<div class="linha"><label>Áudio</label><select id="cap-audio">' +
+            '<option value="">— sem áudio —</option>' + opcoes(audios, 'Entrada') + '</select></div>' +
+          '<div class="previa"><video id="cap-previa" autoplay muted playsinline></video>' +
+            '<div id="cap-estado">abrindo…</div></div>' +
+          '<div class="nota">Numa placa de captura, escolha em Áudio a entrada com o mesmo nome da placa. Esse som vem direto do aparelho, então não gera eco.</div>' +
+          '<div class="acoes">' +
+            '<button class="cancelar" id="cap-cancelar">Cancelar</button>' +
+            '<button class="ok" id="cap-ok" disabled>Transmitir</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(modal);
+
+    const selVideo = modal.querySelector('#cap-video');
+    const selAudio = modal.querySelector('#cap-audio');
+    const previa = modal.querySelector('#cap-previa');
+    const estado = modal.querySelector('#cap-estado');
+    const btnOk = modal.querySelector('#cap-ok');
+    let streamPrevia = null;
+
+    const pararPrevia = () => {
+      if (streamPrevia){ streamPrevia.getTracks().forEach(t => { try{ t.stop(); }catch(e){} }); streamPrevia = null; }
+      previa.srcObject = null;
+    };
+
+    // A prévia mostra na hora se a placa abre. Sem isso o erro só apareceria
+    // depois de já estar na chamada, na frente de todo mundo.
+    const testar = async () => {
+      pararPrevia();
+      btnOk.disabled = true;
+      estado.className = '';
+      estado.textContent = 'abrindo…';
+      const r = await abrirDispositivo(selVideo.value, selAudio.value);
+      if (!modal.isConnected){ if (r.stream) r.stream.getTracks().forEach(t => t.stop()); return; }
+      if (r.erro){
+        estado.className = 'ruim';
+        estado.textContent = explicarErroMidia(r.erro);
+        return;
+      }
+      streamPrevia = r.stream;
+      previa.srcObject = r.stream;
+      previa.play().catch(()=>{});
+      const v = r.stream.getVideoTracks()[0];
+      const s = v ? v.getSettings() : {};
+      estado.className = 'ok';
+      estado.textContent = '✓ ' + (s.width || '?') + 'x' + (s.height || '?') +
+        (s.frameRate ? ' · ' + Math.round(s.frameRate) + 'fps' : '') +
+        (r.stream.getAudioTracks().length ? ' · com áudio' : ' · sem áudio');
+      btnOk.disabled = false;
+    };
+
+    // Placas de captura expõem vídeo e áudio com nomes parecidos. Adivinhar o
+    // par certo poupa o erro mais comum: transmitir imagem sem som.
+    const casarAudio = () => {
+      const nome = (videos.find(v => v.deviceId === selVideo.value) || {}).label || '';
+      const chave = nome.split(/[({]/)[0].trim().toLowerCase();
+      if (chave.length < 4) return;
+      const par = audios.find(a => (a.label || '').toLowerCase().includes(chave));
+      if (par) selAudio.value = par.deviceId;
+    };
+    selVideo.addEventListener('change', () => { casarAudio(); testar(); });
+    selAudio.addEventListener('change', testar);
+    casarAudio();
+    testar();
+
+    const fechar = () => { pararPrevia(); modal.remove(); };
+    modal.querySelector('#cap-x').addEventListener('click', fechar);
+    modal.querySelector('#cap-cancelar').addEventListener('click', fechar);
+    btnOk.addEventListener('click', () => {
+      const v = selVideo.value, a = selAudio.value;
+      // Solta o aparelho ANTES de reabrir para transmitir: no Windows ele
+      // aceita um consumidor por vez, e a própria prévia bloquearia.
+      pararPrevia();
+      modal.remove();
+      startCaptura(v, a);
+    });
+  }
+
+  async function startCaptura(idVideo, idAudio){
+    if (!VOICE.joined){
+      const alvo = VOICE.chan || (VOICE.channels[0] && VOICE.channels[0].id) || 'voz-geral';
+      await joinVoice(alvo);
+    }
+    // Solta o que estiver transmitindo antes de abrir o aparelho: no Windows
+    // ele aceita um consumidor por vez.
+    stopScreen(true);
+
+    const r = await abrirDispositivo(idVideo, idAudio);
+    if (r.erro){ showToast(explicarErroMidia(r.erro)); return; }
+    const s = r.stream;
+
+    VOICE.screenStream = s;
+    VOICE.screenVideoTrack = s.getVideoTracks()[0] || null;
+    VOICE.screenAudioTrack = s.getAudioTracks()[0] || null;
+    VOICE.screenSurface = 'captura';
+    if (VOICE.screenVideoTrack){
+      // 'motion' em vez de 'detail': imagem de jogo tem movimento, e aqui vale
+      // manter a fluidez em vez da nitidez de texto parado.
+      try{ VOICE.screenVideoTrack.contentHint = 'motion'; }catch(e){}
+      VOICE.screenVideoTrack.addEventListener('ended', () => stopScreen());
+    }
+
+    Object.values(VOICE.peers).forEach(applyLocalTracks);
+    VOICE.stageHidden = false;
+    VOICE.stageSid = SID;
+    VOICE._sig = null;
+    const cfg = VOICE.screenVideoTrack ? VOICE.screenVideoTrack.getSettings() : {};
+    showToast('Transmitindo ' + (cfg.width || '?') + 'x' + (cfg.height || '?') +
+      (VOICE.screenAudioTrack ? ' com áudio do aparelho.' : ' sem áudio.'));
+    voiceTick();
+  }
+
+  function stopScreen(quiet){
+    if (!VOICE.screenStream && !VOICE.screenVideoTrack) return;
+    if (VOICE.screenStream) VOICE.screenStream.getTracks().forEach(t => { try{ t.stop(); }catch(e){} });
+    VOICE.screenStream = null;
+    VOICE.screenVideoTrack = null;
+    VOICE.screenAudioTrack = null;
+    VOICE.screenSurface = null;
+    Object.values(VOICE.peers).forEach(applyLocalTracks);
+    VOICE._sig = null;
+    if (!quiet){ renderVoice(); updateStage(); voiceTick(); }
+  }
+
+  // Menu com as duas opções. A escolha entre elas é o que decide se vai ter eco,
+  // então vale ser explícita em vez de escondida dentro do seletor do Chrome.
+  function abrirMenuTela(ancora){
+    const antigo = document.getElementById('menu-tela');
+    if (antigo){ antigo.remove(); return; }
+
+    const m = document.createElement('div');
+    m.id = 'menu-tela';
+    m.innerHTML =
+      '<div class="mt-op" data-modo="aba">' +
+        '<b>Compartilhar uma aba</b>' +
+        '<span>Leva o som só daquela aba. Sem eco.</span>' +
+      '</div>' +
+      '<div class="mt-op" data-modo="tela">' +
+        '<b>Compartilhar a tela inteira</b>' +
+        '<span>Para programas fora do navegador. Com som do sistema, dá eco.</span>' +
+      '</div>' +
+      // Placa de captura e webcam são dispositivos de vídeo, não tela — entram
+      // por outro caminho, e por isso viram uma opção separada.
+      (RECURSOS_NOVOS ? '<div class="mt-op" data-modo="captura">' +
+        '<b>Câmera ou placa de captura</b>' +
+        '<span>Console, câmera, HDMI. Áudio vem do próprio aparelho, sem eco.</span>' +
+      '</div>' : '');
+    document.body.appendChild(m);
+
+    const r = ancora.getBoundingClientRect();
+    m.style.top = (r.bottom + 6) + 'px';
+    m.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 292)) + 'px';
+
+    m.querySelectorAll('.mt-op').forEach(el => {
+      el.addEventListener('click', () => {
+        const modo = el.dataset.modo;
+        m.remove();
+        if (modo === 'captura') abrirEscolhaDispositivo();
+        else startScreen(modo);
+      });
+    });
+    setTimeout(() => {
+      document.addEventListener('click', function fecha(ev){
+        if (!m.contains(ev.target)){ m.remove(); document.removeEventListener('click', fecha); }
+      });
+    }, 0);
+  }
+
+  document.getElementById('share-btn').addEventListener('click', (ev) => {
+    if (VOICE.screenVideoTrack) stopScreen();
+    else abrirMenuTela(ev.currentTarget);
+  });
+
+  // ---------- palco ----------
+  // O <video> é um nó permanente: nunca recriamos o elemento, só trocamos o
+  // srcObject quando muda de quem estamos assistindo. Era exatamente isso que
+  // quebrava antes — o render periódico recriava o <video> e o stream sumia.
+  function updateStage(){
+    const sharers = [];
+    if (VOICE.joined && VOICE.screenVideoTrack){
+      sharers.push({ sid: SID, name: state.nickname + ' (você)', self: true });
+    }
+    for (const p of Object.values(VOICE.peers)){
+      const e = VOICE.bySession[p.sid];
+      const vt = p.screen && p.screen.getVideoTracks()[0];
+      // Vale a mídia de verdade, não só a flag de presença: se o vídeo está
+      // chegando, mostra — mesmo que a batida de presença tenha atrasado. Era
+      // isso que fazia a tela sumir e voltar em rede instável.
+      const temVideo = !!(vt && vt.readyState === 'live' && !vt.muted);
+      if ((e && e.sharing) || temVideo) sharers.push({ sid: p.sid, name: p.name, self: false });
+    }
+    const hadNone = VOICE.sharers.length === 0;
+    VOICE.sharers = sharers;
+    if (hadNone && sharers.length) VOICE.stageHidden = false;
+
+    const shareBtn = document.getElementById('share-btn');
+    shareBtn.textContent = VOICE.screenVideoTrack ? '⏹️ Parar de compartilhar' : '🖥️ Compartilhar tela';
+    shareBtn.classList.toggle('live', !!VOICE.screenVideoTrack);
+
+    const on = sharers.length > 0 && !VOICE.stageHidden;
+    document.body.classList.toggle('stage-on', on);
+    if (!on){
+      document.body.classList.remove('theater');
+      const v = document.getElementById('stage-video');
+      if (v.srcObject) v.srcObject = null;
+      return;
+    }
+
+    if (!sharers.find(s => s.sid === VOICE.stageSid)) VOICE.stageSid = sharers[0].sid;
+    const cur = sharers.find(s => s.sid === VOICE.stageSid);
+    const peer = cur.self ? null : VOICE.peers[cur.sid];
+    const want = cur.self ? VOICE.screenStream : (peer && peer.screen);
+
+    const video = document.getElementById('stage-video');
+    if (want && video.srcObject !== want){
+      video.srcObject = want;
+      video.play().catch(() => showUnblockAudio());
+    }
+    video.muted = cur.self ? true : VOICE.deafened;   // nunca tocar o próprio áudio
+
+    const title = document.getElementById('stage-title');
+    let tag = '';
+    if (cur.self){
+      // Quem compartilha vê sempre qual áudio está saindo — o toast some em 5s,
+      // e mandar o som do sistema inteiro sem perceber é o erro caro aqui.
+      if (!VOICE.screenAudioTrack) tag = '<span class="audio-tag">sem áudio</span>';
+      else if (VOICE.screenSurface === 'monitor') tag = '<span class="audio-tag alerta">áudio do sistema todo</span>';
+      else if (VOICE.screenSurface === 'captura') tag = '<span class="audio-tag ok">áudio do aparelho</span>';
+      else tag = '<span class="audio-tag ok">áudio só da origem</span>';
+    }
+    const titleHtml = '<span class="rec"></span><span>' + escapeHtml(cur.name) + '</span>' + tag;
+    if (title._h !== titleHtml){ title.innerHTML = titleHtml; title._h = titleHtml; }
+
+    const tabs = document.getElementById('stage-tabs');
+    const tabsHtml = sharers.length > 1
+      ? sharers.map(s => '<span class="stab ' + (s.sid===VOICE.stageSid?'active':'') + '" data-sid="' + s.sid + '">' + escapeHtml(s.name) + '</span>').join('')
+      : '';
+    if (tabs._h !== tabsHtml){
+      tabs.innerHTML = tabsHtml;
+      tabs._h = tabsHtml;
+      tabs.querySelectorAll('.stab').forEach(el => {
+        el.addEventListener('click', () => { VOICE.stageSid = el.dataset.sid; updateStage(); });
+      });
+    }
+
+    let msg = '';
+    if (!cur.self){
+      const st = peer && peer.pc && peer.pc.connectionState;
+      const vt = want && want.getVideoTracks()[0];
+      if (peer && peer.dead) msg = 'Não foi possível conectar com ' + cur.name + '.\nA rede provavelmente bloqueia P2P — nesse caso é preciso um servidor TURN.';
+      else if (st !== 'connected') msg = 'Conectando com ' + cur.name + '…';
+      else if (!vt) msg = 'Aguardando o vídeo…';
+      else if (vt.muted) msg = 'Aguardando os primeiros quadros…';
+    }
+    const status = document.getElementById('stage-status');
+    if (status.textContent !== msg) status.textContent = msg;
+    status.classList.toggle('show', !!msg);
+  }
+
+  document.getElementById('stage-hide').addEventListener('click', () => {
+    VOICE.stageHidden = true;
+    updateStage();
+  });
+  document.getElementById('stage-theater').addEventListener('click', () => {
+    const on = document.body.classList.toggle('theater');
+    document.getElementById('stage-theater').classList.toggle('on', on);
+  });
+  function goFullscreen(){
+    const wrap = document.getElementById('stage-video-wrap');
+    if (document.fullscreenElement){ document.exitFullscreen(); return; }
+    const req = wrap.requestFullscreen || wrap.webkitRequestFullscreen;
+    if (req){ const r = req.call(wrap); if (r && r.catch) r.catch(()=>{}); }
+  }
+  document.getElementById('stage-full').addEventListener('click', goFullscreen);
+  document.getElementById('stage-video').addEventListener('dblclick', goFullscreen);
+  document.getElementById('stage-pip').addEventListener('click', async () => {
+    const v = document.getElementById('stage-video');
+    try{
+      if (document.pictureInPictureElement) await document.exitPictureInPicture();
+      else await v.requestPictureInPicture();
+    }catch(e){ showToast('Picture-in-picture indisponível neste navegador.'); }
+  });
+
+  // ---------- render da sidebar de voz ----------
+  function renderVoice(){
+    const sig = JSON.stringify([
+      VOICE.channels.map(c => c.id + c.name),
+      VOICE.chan, VOICE.joined, VOICE.muted, VOICE.deafened, !!VOICE.screenVideoTrack,
+      Object.keys(VOICE.presence).sort().map(c =>
+        c + '|' + VOICE.presence[c].map(e => e.session + e.name + (e.muted?'m':'') + (e.sharing?'s':'')).sort().join(',')
+      ).join(';'),
+      Object.values(VOICE.peers).map(p => p.sid + ':' + (p.pc ? p.pc.connectionState : '-') + (p.dead?'!':'')).sort().join(',')
+    ]);
+    if (sig === VOICE._sig) return;
+    VOICE._sig = sig;
+
+    const list = document.getElementById('voice-list');
+    list.innerHTML = VOICE.channels.map(c => {
+      const occ = (VOICE.presence[c.id] || []).slice().sort((a,b) => a.name.localeCompare(b.name));
+      const isHere = VOICE.joined && VOICE.chan === c.id;
+      const rows = occ.map(e => {
+        const me = e.session === SID;
+        const p = VOICE.peers[e.session];
+        let right = '';
+        if (isHere && !me && p){
+          const st = p.pc ? p.pc.connectionState : 'new';
+          if (p.dead) right = '<span class="vstate">falhou</span>';
+          else if (st !== 'connected') right = '<span class="vstate">conectando…</span>';
+        }
+        if (!right){
+          const icons = [];
+          if (e.sharing) icons.push('<span class="vicon live" title="compartilhando a tela">🖥️</span>');
+          if (e.muted) icons.push('<span class="vicon bad" title="microfone desligado">🔇</span>');
+          right = icons.join('');
+        }
+        return '<div class="vo-row" data-sid="' + e.session + '">' +
+            '<div class="avatar" style="background:' + colorFor(e.name) + '">' + escapeHtml(initials(e.name)) + '</div>' +
+            '<span class="vname">' + escapeHtml(e.name) + (me?' (você)':'') + '</span>' + right +
+          '</div>';
+      }).join('');
+      return '<div class="voice-block">' +
+          '<div class="channel-item ' + (isHere?'active':'') + '" data-vchan="' + c.id + '">' +
+            '<span class="hash">🔊</span><span>' + escapeHtml(c.name) + '</span>' +
+            (occ.length ? '<span class="count">' + occ.length + '</span>' : '') +
+          '</div>' +
+          (occ.length ? '<div class="voice-occupants">' + rows + '</div>' : '') +
+        '</div>';
+    }).join('');
+
+    list.querySelectorAll('[data-vchan]').forEach(el => {
+      el.addEventListener('click', () => {
+        const id = el.dataset.vchan;
+        if (VOICE.joined && VOICE.chan === id) leaveVoice();
+        else joinVoice(id);
+      });
+    });
+
+    const bar = document.getElementById('call-bar');
+    if (VOICE.joined){
+      const ch = VOICE.channels.find(c => c.id === VOICE.chan);
+      const peers = Object.values(VOICE.peers);
+      const connected = peers.filter(p => p.pc && p.pc.connectionState === 'connected').length;
+      const label = peers.length ? 'Voz conectada · ' + connected + '/' + peers.length : 'Voz conectada';
+      bar.innerHTML =
+        '<div class="call-top">' +
+          '<span class="call-status">🟢 ' + label + '</span>' +
+          '<span class="call-where">' + escapeHtml(ch ? ch.name : '') + '</span>' +
+          '<button class="hangup" id="hangup-btn">Sair</button>' +
+        '</div>' +
+        '<div class="call-btns">' +
+          '<div class="cbtn ' + (VOICE.muted?'on':'') + '" id="mute-btn">' + (VOICE.muted?'🔇 Mudo':'🎤 Falar') + '</div>' +
+          '<div class="cbtn ' + (VOICE.deafened?'on':'') + '" id="deafen-btn">' + (VOICE.deafened?'🔕 Surdo':'🎧 Ouvir') + '</div>' +
+          '<div class="cbtn ' + (VOICE.screenVideoTrack?'live':'') + '" id="share-btn-2">' + (VOICE.screenVideoTrack?'⏹️ Parar':'🖥️ Tela') + '</div>' +
+        '</div>';
+      document.getElementById('hangup-btn').addEventListener('click', () => leaveVoice());
+      document.getElementById('mute-btn').addEventListener('click', toggleMute);
+      document.getElementById('deafen-btn').addEventListener('click', toggleDeafen);
+      document.getElementById('share-btn-2').addEventListener('click', (ev) => {
+        if (VOICE.screenVideoTrack) stopScreen(); else abrirMenuTela(ev.currentTarget);
+      });
+    } else if (bar.innerHTML){
+      bar.innerHTML = '';
+    }
+  }
+
+  window.addEventListener('beforeunload', () => {
+    if (!VOICE.joined) return;
+    safeDeletePrefix('sdp:' + SID + ':', true);
+    safeDeletePrefix('ans:' + SID + ':', true);
+    try{ window.storage.delete('vp:' + VOICE.chan + ':' + SID, true); }catch(e){}
+  });
+
+  // ---------- BOOT ----------
+  async function boot(){
+    document.getElementById('gate').style.display = 'none';
+    document.getElementById('app').style.display = 'flex';
+
+    document.getElementById('my-name').textContent = state.nickname;
+    document.getElementById('my-avatar').style.background = colorFor(state.nickname);
+    document.getElementById('my-avatar').textContent = initials(state.nickname);
+
+    await loadServerName();
+    renderServerName();
+    await loadChannels();
+    renderChannels();
+    await loadVoiceChannels();
+    await loadMessages(true);
+    await heartbeatAndLoadMembers();
+    await voiceTick();
+
+    // Um GET só, e trazendo apenas o que mudou. Quem não mudou não vem, e o
+    // que não vem simplesmente não é redesenhado.
+    let carimbo = null;
+    setInterval(async () => {
+      const chaveMsg = 'messages:' + state.activeChannelId;
+      if (state.pedirTudo){ state.pedirTudo = false; carimbo = null; }
+      const d = await safeGetChanged(['channels', 'voice-channels', chaveMsg], carimbo);
+      if (d){
+        carimbo = d.carimbo;
+        if ('channels' in d.valores){ await loadChannels(d.valores['channels']); renderChannels(); }
+        if ('voice-channels' in d.valores) await loadVoiceChannels(d.valores['voice-channels']);
+        if (chaveMsg in d.valores) await loadMessages(false, d.valores[chaveMsg]);
+      }
+      // A presença de texto vale metade da frequência: a janela de "online" é
+      // de 8s, então atualizar a cada 5s continua correto e poupa uma
+      // requisição por ciclo, por pessoa.
+      state.tique = (state.tique || 0) + 1;
+      if (state.tique % 2 === 1) await heartbeatAndLoadMembers();
+    }, POLL_MS);
+
+    restartVoiceTimer();
+
+    // Restos da versão anterior: a presença de texto virou uma linha por
+    // pessoa (mb:<nome>), então o mapa antigo numa linha só não serve mais.
+    // Some com ele aqui em vez de deixar isso como tarefa manual.
+    safeDelete('members', true);
+
+    // Abre a lista sozinha quando a versão mudou desde a última visita — assim
+    // quem entra depois de um deploy vê o que há de novo sem ir procurar.
+    if (RECURSOS_NOVOS){
+      const visto = await safeGet('novidades-vistas', false);
+      if (visto !== SALA_VERSAO){
+        abrirModalNovidades();
+        await safeSet('novidades-vistas', SALA_VERSAO, false);
+      }
+    }
+  }
+
+  if (RECURSOS_NOVOS) montarNovidades();
+
+  (async function main(){
+    if (!window.storage){
+      document.getElementById('gate').innerHTML = '<div class="card"><h1>Armazenamento indisponível</h1><p>Este artefato precisa do recurso de armazenamento para funcionar.</p></div>';
+      return;
+    }
+    if (MODO_LOGIN){
+      const raw = await safeGet('sessao', false);
+      let s = null;
+      try{ s = raw ? JSON.parse(raw) : null; }catch(e){ s = null; }
+      if (s && s.usuario && s.exp && s.exp > Math.floor(Date.now()/1000)){
+        state.nickname = s.usuario;
+        await boot();
+      } else {
+        if (s) await safeDelete('sessao', false);   // sessão vencida
+        document.getElementById('nick-input').focus();
+      }
+      return;
+    }
+
+    const existing = await loadNickname();
+    if (existing){
+      state.nickname = existing;
+      await boot();
+    } else {
+      document.getElementById('pass-input').focus();
+    }
+  })();
+})();
+</script>
+</body>
+</html>

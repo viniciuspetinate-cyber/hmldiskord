@@ -1,0 +1,6 @@
+# O navegador confere se há versão nova a cada carregamento, em vez de servir
+# a cópia guardada. É isto que evita ter que pedir Ctrl+Shift+R a todo mundo
+# depois de publicar — a meta tag dentro do HTML ajuda, mas o cabeçalho manda.
+/*.html
+  Cache-Control: no-cache, must-revalidate
+  X-Content-Type-Options: nosniff
