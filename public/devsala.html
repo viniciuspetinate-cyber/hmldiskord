@@ -559,15 +559,20 @@
   //   qualquercoisa.html -> prefixo "qualquercoisa:"
   //
   // Ou seja: basta copiar o arquivo com outro nome e ele já nasce isolado.
-  // Normalmente o espaço vem do nome do arquivo. Mas se o arquivo for
-  // publicado como index.html na raiz (o padrão do Cloudflare Pages), o nome
-  // some do caminho e ele cairia no espaço de PRODUÇÃO por acidente. Por isso
-  // dá para fixar o espaço aqui, e aí não importa como o arquivo se chama.
-  const ESPACO_FORCADO = "";   // ex: "hmlsala" — vazio = usa o nome do arquivo
+  // O espaço de dados é DECLARADO, não deduzido. Deduzir pelo nome do arquivo
+  // quebra em hospedagens que mexem no endereço — o Cloudflare Pages, por
+  // exemplo, serve /sala.html como /sala, e aí o nome some. Com o valor
+  // escrito aqui, o arquivo vai para o lugar certo esteja onde estiver.
+  //
+  //   "producao"  -> a sala de verdade, sem prefixo
+  //   "hmlsala"   -> homologação
+  //   "devsala"   -> desenvolvimento
+  //   ""          -> (não recomendado) deduz pelo nome do arquivo
+  const ESPACO_FORCADO = "devsala";
 
   const ARQUIVO = (location.pathname.split("/").pop() || "sala.html").toLowerCase();
-  const NS = ESPACO_FORCADO
-    ? ESPACO_FORCADO + ":"
+  const NS = ESPACO_FORCADO === "producao" ? ""
+    : ESPACO_FORCADO ? ESPACO_FORCADO + ":"
     : ((ARQUIVO === "sala.html" || ARQUIVO === "") ? "" : ARQUIVO.replace(/\.html?$/, "") + ":");
   window.__SALA_ARQUIVO = ESPACO_FORCADO || ARQUIVO;
   window.__SALA_NS = NS;                                    // "" quando é produção
