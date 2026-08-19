@@ -136,20 +136,31 @@
   /* ---------- MARCA DE AMBIENTE DE TESTE ---------- */
   /* Só aparece quando o arquivo não é o sala.html. Serve para ninguém achar
      que está na sala de verdade e mandar recado para o vazio. */
+  /* Uma cor por ambiente, para ninguém confundir uma janela com a outra:
+     laranja = homologação, roxo = desenvolvimento, vermelho = qualquer outro. */
+  body.ambiente-dev{
+    --amb:#ed4245; --amb-fundo:#4a2430; --amb-texto:#ffb4b4; --amb-borda:#6b3340;
+  }
+  body.amb-hmlsala{
+    --amb:#f5a524; --amb-fundo:#4a3618; --amb-texto:#ffd79a; --amb-borda:#6b4f22;
+  }
+  body.amb-devsala{
+    --amb:#8b5cf6; --amb-fundo:#332a4d; --amb-texto:#d4c2ff; --amb-borda:#4d3f73;
+  }
   .dev-badge{
     display:inline-flex; align-items:center; gap:6px;
-    background:#4a2430; color:#ffb4b4; border:1px solid #6b3340;
+    background:var(--amb-fundo); color:var(--amb-texto); border:1px solid var(--amb-borda);
     font-size:10px; font-weight:800; letter-spacing:.9px; text-transform:uppercase;
     padding:4px 10px; border-radius:20px; font-family:var(--font-ui);
   }
   #gate .dev-badge{ margin-bottom:14px; }
   #server-name .dev-badge{ font-size:9px; padding:2px 7px; letter-spacing:.6px; }
-  body.ambiente-dev #rail .server-icon{ background:#ed4245; color:#fff; }
+  body.ambiente-dev #rail .server-icon{ background:var(--amb); color:#fff; }
   body.ambiente-dev #rail::after{
-    content:'DEV'; font-size:9px; font-weight:800; color:#ff9d9d;
+    content:var(--amb-rotulo, 'TESTE'); font-size:9px; font-weight:800; color:var(--amb-texto);
     letter-spacing:1px; margin-top:-4px;
   }
-  body.ambiente-dev #main{ box-shadow: inset 0 3px 0 0 #ed4245; }
+  body.ambiente-dev #main{ box-shadow: inset 0 3px 0 0 var(--amb); }
 
   /* ---------- RAIL ---------- */
   #rail{
@@ -738,9 +749,14 @@
   // assim a homologação ensaia o que vai acontecer de verdade.
   const MODO_CONTA = MODO_LOGIN && /^devsala/.test(window.__SALA_ARQUIVO || '');
 
+  // "hmlsala" -> "hml", "devsala" -> "dev"; usado no selo e na etiqueta lateral
+  const AMB = (window.__SALA_ESPACO || '').replace(/sala$/, '') || 'teste';
+
   if (EH_DEV){
-    document.title = '[DEV] ' + document.title;
+    document.title = '[' + AMB.toUpperCase() + '] ' + document.title;
     document.body.classList.add('ambiente-dev');
+    document.body.classList.add('amb-' + (window.__SALA_ESPACO || ''));
+    document.body.style.setProperty('--amb-rotulo', JSON.stringify(AMB.toUpperCase()));
     const card = document.querySelector('#gate .card');
     const titulo = card && card.querySelector('h1');
     if (titulo){
@@ -1209,7 +1225,7 @@
     document.getElementById('server-initial').textContent = initials(state.serverName);
     const el = document.getElementById('server-name');
     el.innerHTML = `<span>${escapeHtml(state.serverName)}</span>` +
-      (EH_DEV ? `<span class="dev-badge">dev</span>` : '') +
+      (EH_DEV ? `<span class="dev-badge">${escapeHtml(AMB)}</span>` : '') +
       `<span class="edit-btn" id="rename-btn">editar</span>`;
     document.getElementById('rename-btn').addEventListener('click', startRename);
   }
