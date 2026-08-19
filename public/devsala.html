@@ -779,8 +779,19 @@
   // canais, e controle de volume por pessoa. Ficam no mesmo arquivo para os
   // três continuarem idênticos — só este ambiente liga.
   const SO_DEV = /^devsala/.test(window.__SALA_ARQUIVO || '');
-  const NOME_FIXO_DEV = 'AiQueCall - Dev';
-  const CANAIS_VOZ_DEV = [
+
+  // Nome fixo por ambiente, igual nos três: quem abre a janela sabe onde está
+  // pelo próprio nome, sem depender de selo ou de cor.
+  const NOME_POR_AMBIENTE = {
+    producao: 'AiQueCall - Prod',
+    hmlsala:  'AiQueCall - HML',
+    devsala:  'AiQueCall - Dev',
+  };
+  const NOME_FIXO = NOME_POR_AMBIENTE[window.__SALA_ESPACO]
+    || ('AiQueCall - ' + (window.__SALA_ESPACO || 'Sala'));
+
+  // Canais de voz fixos. Criar canal saiu de todos os ambientes.
+  const CANAIS_VOZ = [
     { id: 'voz-geral',  name: 'Geral' },
     { id: 'voz-sala-2', name: 'Sala 2' },
   ];
@@ -828,12 +839,11 @@
     if (sair) sair.title = 'Sair da conta';
   }
 
-  if (SO_DEV){
-    // Sem criar canais: a lista é fixa neste ambiente.
-    for (const id of ['add-channel-btn', 'add-voice-btn']){
-      const b = document.getElementById(id);
-      if (b) b.style.display = 'none';
-    }
+  // Sem criar canais em nenhum ambiente: esconde os botões "+" e as linhas de
+  // digitar o nome do canal novo.
+  for (const id of ['add-channel-btn', 'add-voice-btn', 'new-channel-row', 'new-voice-row']){
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
   }
 
   // Botão no cabeçalho para reabrir a lista. Fora do bloco de teste de
@@ -1261,34 +1271,18 @@
 
   // ---------- NOME DO SERVIDOR ----------
   async function loadServerName(){
-    if (SO_DEV){ state.serverName = NOME_FIXO_DEV; return; }   // fixo: não vem do banco
-    const v = await safeGet('server-name', true);
-    if (v){ state.serverName = v; }
-    else { await safeSet('server-name', state.serverName, true); }
+    // Vem do código, não do banco. A chave 'server-name' deixou de ser usada;
+    // apagar aqui evita deixar lixo para trás.
+    state.serverName = NOME_FIXO;
+    safeDelete('server-name', true);
   }
   function renderServerName(){
     document.getElementById('server-initial').textContent = initials(state.serverName);
     const el = document.getElementById('server-name');
-    el.innerHTML = `<span>${escapeHtml(state.serverName)}</span>` +
-      (EH_DEV && !SO_DEV ? `<span class="dev-badge">${escapeHtml(AMB)}</span>` : '') +
-      (SO_DEV ? '' : `<span class="edit-btn" id="rename-btn">editar</span>`);
-    const btnRenomear = document.getElementById('rename-btn');
-    if (btnRenomear) btnRenomear.addEventListener('click', startRename);
+    // Nome fixo: nada de editar. E sem selo ao lado — o próprio nome já diz
+    // o ambiente, e a cor continua no ícone da barra e na faixa do topo.
+    el.innerHTML = `<span>${escapeHtml(state.serverName)}</span>`;
   }
-  function startRename(){
-    const el = document.getElementById('server-name');
-    el.innerHTML = `<input id="rename-input" maxlength="30" value="${escapeHtml(state.serverName)}">`;
-    const input = document.getElementById('rename-input');
-    input.focus(); input.select();
-    const commit = async () => {
-      const v = input.value.trim();
-      if (v){ state.serverName = v; await safeSet('server-name', v, true); }
-      renderServerName();
-    };
-    input.addEventListener('keydown', e => { if(e.key==='Enter') commit(); if(e.key==='Escape') renderServerName(); });
-    input.addEventListener('blur', commit);
-  }
-
   // ---------- CANAIS DE TEXTO ----------
   async function loadChannels(bruto){
     const raw = bruto !== undefined ? bruto : await safeGet('channels', true);
@@ -1529,16 +1523,11 @@
     _sig: null,
   };
 
-  async function loadVoiceChannels(bruto){
-    if (SO_DEV){ VOICE.channels = CANAIS_VOZ_DEV; return; }     // lista fixa
-    const raw = bruto !== undefined ? bruto : await safeGet('voice-channels', true);
-    let ch = null;
-    if (raw){ try{ ch = JSON.parse(raw); }catch(e){ ch = null; } }
-    if (!ch || !Array.isArray(ch) || ch.length === 0){
-      ch = [{ id:'voz-geral', name:'Geral' }];
-      await safeSet('voice-channels', JSON.stringify(ch), true);
-    }
-    VOICE.channels = ch;
+  // Lista fixa, vinda do código. A chave 'voice-channels' no banco não é mais
+  // lida; apagar evita deixar lixo para trás.
+  async function loadVoiceChannels(){
+    VOICE.channels = CANAIS_VOZ;
+    if (!VOICE._limpouCanais){ VOICE._limpouCanais = true; safeDelete('voice-channels', true); }
   }
 
   document.getElementById('add-voice-btn').addEventListener('click', () => {
@@ -2813,11 +2802,10 @@
     setInterval(async () => {
       const chaveMsg = 'messages:' + state.activeChannelId;
       if (state.pedirTudo){ state.pedirTudo = false; carimbo = null; }
-      const d = await safeGetChanged(['channels', 'voice-channels', chaveMsg], carimbo);
+      const d = await safeGetChanged(['channels', chaveMsg], carimbo);
       if (d){
         carimbo = d.carimbo;
         if ('channels' in d.valores){ await loadChannels(d.valores['channels']); renderChannels(); }
-        if ('voice-channels' in d.valores) await loadVoiceChannels(d.valores['voice-channels']);
         if (chaveMsg in d.valores) await loadMessages(false, d.valores[chaveMsg]);
       }
       // A presença de texto vale metade da frequência: a janela de "online" é
