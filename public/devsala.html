@@ -774,8 +774,21 @@
   // sem sessão o app não é montado, aconteça o que acontecer com a navegação.
   function voltarParaPorta(){
     apagarSessaoDeTodos();
-    try{ location.replace(PORTA); }
-    catch(e){ try{ location.href = PORTA; }catch(e2){} }
+
+    // Cada tentativa só acontece se a anterior falhou de verdade (lançou).
+    // Um reload agendado "por garantia" seria pior que o problema: navegação
+    // lenta ainda em andamento seria cancelada por ele, e a pessoa voltaria
+    // para a sala que estava tentando deixar.
+    try{ location.replace(PORTA); return; }
+    catch(e){ console.warn('[sala] replace para a porta falhou', e); }
+
+    try{ location.href = PORTA; return; }
+    catch(e){ console.warn('[sala] href para a porta falhou', e); }
+
+    // Nenhuma das duas pegou. Recarregar basta: a sessão já foi apagada acima,
+    // então o guard no topo deste arquivo barra o app. Pior caso, a pessoa fica
+    // numa tela que não é a sala, em vez de continuar dentro dela.
+    try{ location.reload(); }catch(e){}
   }
 
   if (!sessaoDoEspaco()){
@@ -1442,8 +1455,23 @@
   }
 
   document.getElementById('leave-btn').addEventListener('click', async () => {
-    await leaveVoice();
-    try{ await window.storage.delete('nickname', false); }catch(e){}
+    // ORDEM IMPORTA. Antes isto era `await leaveVoice()` primeiro, e a saída só
+    // acontecia depois: leaveVoice faz três remoções no banco, em série, e
+    // qualquer uma que demore ou estoure levava o clique a não fazer nada
+    // visível. Agora a sessão sai primeiro — é localStorage, instantâneo — e a
+    // limpeza da voz é o que pode falhar sem impedir de sair.
+    if (MODO_LOGIN) apagarSessaoDeTodos();
+    try{ window.storage.delete('nickname', false); }catch(e){}
+
+    // Avisar os outros que você saiu é boa educação, não pré-requisito.
+    // Dois segundos no máximo, e depois vai embora de qualquer jeito.
+    try{
+      await Promise.race([
+        (async () => { await leaveVoice(); })(),
+        new Promise((r) => setTimeout(r, 2000)),
+      ]);
+    }catch(e){ console.warn('[sala] falha ao encerrar a voz na saída', e); }
+
     if (MODO_LOGIN){ voltarParaPorta(); return; }
     location.reload();
   });
