@@ -92,8 +92,9 @@
   a.amb .gente{
     display:flex; align-items:center; gap:5px; flex-shrink:0;
     font-size:11.5px; font-weight:700; color:var(--apagado);
-    min-width:34px; justify-content:flex-end;
+    min-width:62px; justify-content:flex-end;
   }
+  a.amb .gente .rot{ font-weight:600; font-size:10.5px; letter-spacing:.2px; }
   a.amb .gente .ponto{
     width:7px;height:7px;border-radius:50%;background:var(--borda);flex-shrink:0;
   }
@@ -139,7 +140,7 @@
           <span class="nome">Sala</span>
           <span class="obs">Ambiente de produção. É aqui que o time conversa.</span>
         </span>
-        <span class="gente" data-amb="producao"><span class="ponto"></span><span class="n">–</span></span>
+        <span class="gente" data-amb="producao"><span class="ponto"></span><span class="n">–</span><span class="rot">Online</span></span>
         <span class="tag">prod</span>
       </a>
 
@@ -149,7 +150,7 @@
           <span class="nome">Homologação</span>
           <span class="obs">Para testar antes de publicar. Dados separados da produção.</span>
         </span>
-        <span class="gente" data-amb="hmlsala"><span class="ponto"></span><span class="n">–</span></span>
+        <span class="gente" data-amb="hmlsala"><span class="ponto"></span><span class="n">–</span><span class="rot">Online</span></span>
         <span class="tag">hml</span>
       </a>
 
@@ -159,7 +160,7 @@
           <span class="nome">Desenvolvimento</span>
           <span class="obs">Recursos novos em teste. Aqui o apelido vale.</span>
         </span>
-        <span class="gente" data-amb="devsala"><span class="ponto"></span><span class="n">–</span></span>
+        <span class="gente" data-amb="devsala"><span class="ponto"></span><span class="n">–</span><span class="rot">Online</span></span>
         <span class="tag">dev</span>
       </a>
     </div>
