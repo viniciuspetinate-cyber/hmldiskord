@@ -182,7 +182,8 @@
     display:flex; flex-direction:column; border-right:1px solid var(--border);
   }
   #server-name{
-    padding:16px 16px 12px; font-weight:700; font-size:15px;
+    /* Caixa alta pede espaçamento positivo, igual ao logotipo do index. */
+    padding:16px 16px 12px; font-weight:700; font-size:15px; letter-spacing:1.2px;
     border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between;
   }
   #server-name .edit-btn{ cursor:pointer; color:var(--text-low); font-size:12px; }
@@ -316,6 +317,11 @@
   #chat-header .head-btn.first{ margin-left:auto; }
   #chat-header .head-btn.live{ color:#8ff0ab; }
   #chat-header .dot-small{ width:7px; height:7px; border-radius:50%; background:var(--online); }
+  /* Escondidos por padrão: só o celular os usa (ver o @media do fim).
+     O seletor precisa do #chat-header para vencer `#chat-header .head-btn`,
+     que traz display:flex e tem especificidade maior que um id sozinho. */
+  #chat-header #menu-btn{ display:none; font-size:16px; }
+  #gaveta-fundo{ display:none; }
 
   /* ---------- PALCO (tela compartilhada) ---------- */
   #stage{
@@ -494,6 +500,87 @@
     #sidebar{ width:200px; }
     body.stage-on #messages{ flex:0 0 26%; }
   }
+
+  /* ==================== CELULAR ====================
+     Ligado só onde `body.mobile-ok` existe — hoje, o ambiente de
+     desenvolvimento. Os três arquivos continuam idênticos; quem liga a classe
+     é o JS, conferindo o ambiente. Para valer nos três, veja MOBILE_OK.
+
+     A ideia: os três painéis lado a lado não cabem em 375px (a régua de 64px
+     mais os canais de 200px deixavam 111px para o chat). Aqui os laterais
+     saem do fluxo e viram gavetas sobre o conteúdo, e o chat fica com a tela
+     inteira. */
+  @media (max-width: 820px){
+    /* A régua só tem o ícone do ambiente; ele reaparece no topo da gaveta. */
+    body.mobile-ok #rail{ display:none; }
+
+    body.mobile-ok #sidebar{
+      position:fixed; top:0; left:0; bottom:0; z-index:45;
+      width:min(82vw, 290px);
+      transform:translateX(-100%);
+      transition:transform .18s ease;
+      box-shadow:0 0 40px rgba(0,0,0,.55);
+    }
+    body.mobile-ok.menu-aberto #sidebar{ transform:none; }
+
+    /* Painel de membros: o media query acima o esconde com !important, então
+       aqui é preciso !important também para reativá-lo como gaveta. Quem
+       abre e fecha é a classe .hidden, que o botão "N online" já alterna —
+       o JS existente continua valendo sem mudança. */
+    body.mobile-ok #members-panel{
+      display:flex !important;
+      position:fixed; top:0; right:0; bottom:0; z-index:45;
+      width:min(76vw, 260px); border-left:1px solid var(--border);
+      transform:translateX(100%);
+      transition:transform .18s ease;
+      box-shadow:0 0 40px rgba(0,0,0,.55);
+    }
+    body.mobile-ok #members-panel:not(.hidden){ transform:none; }
+
+    /* Um fundo escuro só, para as duas gavetas. Tocar nele fecha. */
+    body.mobile-ok #gaveta-fundo{
+      position:fixed; inset:0; z-index:44; background:rgba(6,4,10,.6);
+      display:none;
+    }
+    body.mobile-ok.menu-aberto #gaveta-fundo,
+    body.mobile-ok.membros-abertos #gaveta-fundo{ display:block; }
+
+    body.mobile-ok #chat-header #menu-btn{ display:flex; }
+
+    /* Cabeçalho do chat: cabe pouco. O nome do canal encolhe com reticências
+       em vez de empurrar os botões para fora da tela, e o botão de novidades
+       sai — a lista está na página inicial. */
+    body.mobile-ok #chat-header{ padding:0 10px; gap:5px; font-size:14px; }
+    body.mobile-ok #chat-header #active-channel-name{
+      overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0;
+    }
+    body.mobile-ok #chat-header .head-btn{ font-size:11.5px; padding:7px 8px; flex-shrink:0; }
+    body.mobile-ok #novidades-btn{ display:none; }
+
+    body.mobile-ok #messages{ padding:12px 12px 6px; }
+    body.mobile-ok #input-row{ padding:8px 12px 12px; }
+    /* 16px evita o zoom automático do Safari ao focar o campo. */
+    body.mobile-ok #input-row input, body.mobile-ok #input-row textarea{ font-size:16px; }
+
+    /* Barra do palco: em vez de estourar, quebra em duas linhas. */
+    body.mobile-ok #stage-bar{ flex-wrap:wrap; row-gap:6px; padding:7px 10px; }
+    body.mobile-ok #stage-actions{ margin-left:auto; }
+    body.mobile-ok #stage-vol input[type=range]{ width:56px; }
+    body.mobile-ok #stage-actions .sbtn{ padding:7px 9px; }
+    /* Com o chat embaixo, o vídeo fica alto demais para sobrar conversa. */
+    body.mobile-ok.stage-on #stage{ flex:0 0 auto; max-height:46vh; }
+    body.mobile-ok.stage-on #messages{ flex:1 1 auto; }
+
+    /* Tela de entrada e janelas: largura fixa não cabe. */
+    body.mobile-ok #gate{ padding:18px; }
+    body.mobile-ok #gate .card{ width:100%; max-width:340px; padding:24px 20px; }
+    body.mobile-ok #gate .card input{ font-size:16px; }
+    body.mobile-ok #novidades{ display:none; }
+    body.mobile-ok .modal-card{ width:100% !important; max-width:none !important; }
+
+    /* Alvos de toque na lista de voz e nos canais. */
+    body.mobile-ok .channel-item, body.mobile-ok .vo-row{ padding-top:9px; padding-bottom:9px; }
+  }
 </style>
 </head>
 <body>
@@ -512,6 +599,8 @@
 </div>
 
 <div id="app" style="display:none;">
+  <!-- Fundo escuro das gavetas do celular. Sem largura nem cor no desktop. -->
+  <div id="gaveta-fundo"></div>
   <div id="rail">
     <div class="server-icon" id="server-initial">?</div>
     <div class="rail-line"></div>
@@ -556,6 +645,8 @@
 
   <div id="main">
     <div id="chat-header">
+      <!-- Só aparece no celular; no desktop a barra de canais está sempre à vista. -->
+      <div class="head-btn" id="menu-btn" title="Canais">☰</div>
       <span class="hash">#</span><span id="active-channel-name"></span>
       <div class="head-btn first" id="share-btn">🖥️ Compartilhar tela</div>
       <div class="head-btn" id="member-toggle-btn"><span class="dot-small"></span><span id="online-count">0</span> online</div>
@@ -601,6 +692,10 @@
 <div id="audio-sink"></div>
 <button id="unblock-audio">🔊 Clique para ativar o áudio</button>
 
+<!-- Lista de melhorias, compartilhada com a página inicial. Fica fora do HTML
+     para não existirem quatro cópias do mesmo texto divergindo entre si. Se o
+     arquivo faltar, a lista some e o resto da sala continua funcionando. -->
+<script src="novidades.js"></script>
 <script>
 (function(){
   const SB_URL = "https://rwkuklrvppzhyzrtiloe.supabase.co";
@@ -838,24 +933,38 @@
   // lugar, inclusive na produção.
   const RECURSOS_NOVOS = true;
 
+  // A lista de melhorias mora em novidades.js, carregado antes deste script,
+  // para o index e as três salas mostrarem exatamente o mesmo texto. Se o
+  // arquivo faltar, a lista fica vazia e o painel simplesmente não aparece —
+  // em vez de quebrar a sala.
+  //
+  // Declarada AQUI, e não junto do painel: o botão do cabeçalho é montado
+  // antes, e um `const` usado acima da própria linha é ReferenceError.
+  const NOVIDADES = window.NOVIDADES_SALA || [];
+
   // Login vale em qualquer arquivo com o endereço preenchido — produção
   // inclusive. Só entra quem tem conta em SALA_USUARIOS no Worker.
   // Um modo só: conta individual (usuário e senha), validada no Worker.
-  // O devsala.html ganha, além disso, um campo de apelido — que NÃO vai ao
-  // Worker, é só o nome de exibição. Assim os três arquivos seguem idênticos.
   const MODO_LOGIN = !!AUTH_ENDPOINT;
-  // Conta individual em todos os ambientes. Só o dev ganha, além disso, um
-  // campo de apelido: a conta diz QUEM é, o apelido diz COMO aparecer.
+  // Conta individual em todos os ambientes, com apelido opcional em todos
+  // eles: a conta diz QUEM é, o apelido diz COMO aparecer. O apelido NÃO vai
+  // ao Worker — é só nome de exibição, escolhido no navegador.
   const MODO_CONTA = MODO_LOGIN;
 
-  // Único ajuste que continua exclusivo do ambiente de desenvolvimento: o
-  // campo de apelido na tela de entrada. Fica no mesmo arquivo para os três
-  // continuarem idênticos — só este ambiente liga.
+  // Ajustes exclusivos do ambiente de desenvolvimento. Hoje sobrou um só: o
+  // volume do áudio da transmissão de tela, logo abaixo. Fica no mesmo arquivo
+  // para os três continuarem idênticos — só este ambiente liga.
   const SO_DEV = /^devsala/.test(window.__SALA_ARQUIVO || '');
 
   // Volume e silêncio por pessoa no canal de voz. Nasceu no dev, foi testado
   // e passou a valer nos três ambientes. Para desligar, ponha false aqui.
   const AUDIO_POR_PESSOA = true;
+
+  // Layout de celular: os painéis laterais viram gavetas e o chat ocupa a tela.
+  // Está só no dev enquanto é testado; para valer nos três, troque por true.
+  const MOBILE_OK = SO_DEV;
+  // A largura tem que casar com o @media do CSS.
+  const ESTREITO = () => window.matchMedia('(max-width: 820px)').matches;
 
   // Volume do áudio da transmissão de tela, independente do volume das vozes.
   // Está só no dev enquanto é testado; para valer nos três, troque por true.
@@ -864,12 +973,12 @@
   // Nome fixo por ambiente, igual nos três: quem abre a janela sabe onde está
   // pelo próprio nome, sem depender de selo ou de cor.
   const NOME_POR_AMBIENTE = {
-    producao: 'AiQueCall - Prod',
-    hmlsala:  'AiQueCall - HML',
-    devsala:  'AiQueCall - Dev',
+    producao: 'AIQCALL - PROD',
+    hmlsala:  'AIQCALL - HML',
+    devsala:  'AIQCALL - DEV',
   };
   const NOME_FIXO = NOME_POR_AMBIENTE[window.__SALA_ESPACO]
-    || ('AiQueCall - ' + (window.__SALA_ESPACO || 'Sala'));
+    || ('AIQCALL - ' + (window.__SALA_ESPACO || 'SALA').toUpperCase());
 
   // Canais de voz fixos. Criar canal saiu de todos os ambientes.
   const CANAIS_VOZ = [
@@ -916,9 +1025,11 @@
     pass.placeholder = 'Senha';
     pass.parentNode.insertBefore(nick, pass);
 
-    // No dev, um terceiro campo: a conta autentica, o apelido decide como a
-    // pessoa aparece na sala. Vazio = usa o nome da conta.
-    if (SO_DEV && !document.getElementById('alias-input')){
+    // Um terceiro campo em qualquer ambiente: a conta autentica, o apelido
+    // decide como a pessoa aparece na sala. Vazio = usa o nome da conta.
+    // (Esta tela só aparece se a porta única for desligada; a entrada normal
+    // é pelo index.html, que tem o mesmo campo.)
+    if (!document.getElementById('alias-input')){
       const alias = document.createElement('input');
       alias.id = 'alias-input';
       alias.maxLength = 24;
@@ -941,7 +1052,7 @@
 
   // Botão no cabeçalho para reabrir a lista. Fora do bloco de teste de
   // propósito: vale também na produção.
-  if (RECURSOS_NOVOS){
+  if (RECURSOS_NOVOS && NOVIDADES.length){
     const cab = document.getElementById('chat-header');
     const btnTela = document.getElementById('share-btn');
     if (cab && btnTela){
@@ -958,46 +1069,7 @@
 
   // Lista das melhorias, mostrada ao lado da entrada e no botão do cabeçalho.
   // Para atualizar, mexa só aqui: o primeiro grupo é o mais recente.
-  const NOVIDADES = [
-    { titulo: 'Novidades desta versão (v3)', itens: [
-      '<b>Entrada só por conta</b> — cada pessoa tem usuário e senha próprios, nos três ambientes. A senha compartilhada da sala deixou de existir.',
-      '<b>Sem conta, ninguém entra</b> — não há mais atalho embutido na página caso o serviço de login fique fora do ar.',
-      '<b>Uma porta só</b> — o login agora é na página inicial, e vale para os três ambientes de uma vez. Abrir uma sala direto no endereço leva de volta para lá.',
-      '<b>Quem está onde</b> — a página inicial mostra quantas pessoas estão em cada ambiente antes de você escolher.',
-      '<b>Cada ambiente tem nome e cor próprios</b> — AiQueCall Prod, HML e Dev. O nome deixou de ser editável, para ninguém confundir onde está.',
-      '<b>Um segundo canal de voz</b> (Sala 2). Criar e apagar canais saiu de todos os ambientes.',
-      '<b>Ícone próprio</b> na aba do navegador e na tela de entrada.',
-      '<b>Volume por pessoa</b> no canal de voz — e dá para <b>parar de ouvir</b> alguém sem silenciar o resto, sem afetar o que os outros escutam.',
-      '<i>Só no Dev:</i> <b>volume do áudio da transmissão de tela</b>, separado do volume das vozes — o som de um jogo ou de um vídeo não abafa mais a conversa.',
-      '<i>Só no Dev:</i> <b>apelido opcional</b> na entrada — a conta diz quem você é, o apelido diz como você aparece na sala.',
-    ]},
-    { titulo: 'Versão anterior (v2)', itens: [
-      '<b>A sala ficou 20× mais leve</b> — antes cada pessoa baixava o histórico do chat inteiro a cada 2,5s, mesmo sem mensagem nova.',
-      '<b>Entrar na chamada ficou mais rápido</b>: a conexão não espera mais alguns segundos parada antes de começar.',
-      '<b>A chamada não cai mais</b> quando o servidor engasga — quem já está conversando continua conversando.',
-      '<b>Login vale 30 dias</b>, em vez de pedir senha todo dia.',
-      '<b>Câmera e placa de captura</b> — dá para transmitir console ou câmera, com o áudio do próprio aparelho.',
-      '<b>Bip de entrada e saída</b> nos canais de voz.',
-    ]},
-    { titulo: 'Compartilhamento de tela', itens: [
-      '<b>Corrigido: a tela não abria</b> para quem assistia. O vídeo era destruído a cada 2,5 s pelo próprio app.',
-      '<b>Tela grande</b> — ocupa a área principal, com modo teatro, tela cheia e picture-in-picture.',
-      '<b>Escolha entre aba e tela inteira</b> ao compartilhar. A aba manda só o áudio dela e <b>não dá eco</b>.',
-      '<b>Aviso do áudio</b> em transmissão: mostra se está indo o som da origem ou do sistema todo.',
-      'Qualidade travada em 1080p — texto compartilhado continua legível.',
-    ]},
-    { titulo: 'Voz em grupo', itens: [
-      '<b>Canais de voz</b> com lista de quem está em cada um, mudo, surdo e indicador de quem fala.',
-      'Compartilhamento de tela integrado ao canal, como no Discord.',
-      'Testado com <b>8 pessoas</b> na voz e <b>5 com tela</b> ao mesmo tempo.',
-    ]},
-    { titulo: 'Estabilidade da conexão', itens: [
-      '<b>Servidor TURN</b> — as chamadas passam a funcionar em rede corporativa e no 4G.',
-      '<b>Não cai mais com a aba em segundo plano</b> — o relógio saiu do navegador para um worker.',
-      'Reconexão automática: quem perde conexão volta sozinho, sem sair e entrar.',
-      'Corrigido: depois de algumas quedas, a pessoa ficava marcada como perdida para sempre.',
-    ]},
-  ];
+
 
   // Um gerador só, usado na tela de login e no modal de dentro da sala.
   function htmlNovidades(comTitulo){
@@ -1012,6 +1084,7 @@
   }
 
   function montarNovidades(){
+    if (!NOVIDADES.length) return;
     const gate = document.getElementById('gate');
     if (!gate || document.getElementById('novidades')) return;
     const painel = document.createElement('div');
@@ -1570,6 +1643,55 @@
 
   document.getElementById('member-toggle-btn').addEventListener('click', () => {
     document.getElementById('members-panel').classList.toggle('hidden');
+    sincronizarGavetas();
+  });
+
+  // ---------- GAVETAS DO CELULAR ----------
+  // No desktop nada disto acontece: a classe não é ligada e os painéis seguem
+  // lado a lado. No celular, canais e membros saem do fluxo e viram gavetas.
+  if (MOBILE_OK){
+    document.body.classList.add('mobile-ok');
+    // O painel de membros nasce visível no desktop. Como gaveta, isso o
+    // deixaria aberto no carregamento, tapando o chat — então começa fechado.
+    if (ESTREITO()) document.getElementById('members-panel').classList.add('hidden');
+  }
+
+  // O fundo escuro é um só para as duas gavetas, e precisa saber quando
+  // aparecer. A classe do menu é nossa; a de membros é a .hidden que o botão
+  // já alternava antes de existir celular, então é traduzida aqui.
+  function sincronizarGavetas(){
+    if (!MOBILE_OK) return;
+    const membrosAbertos = ESTREITO()
+      && !document.getElementById('members-panel').classList.contains('hidden');
+    document.body.classList.toggle('membros-abertos', membrosAbertos);
+  }
+
+  function abrirMenu(v){
+    document.body.classList.toggle('menu-aberto', v);
+  }
+
+  function fecharGavetas(){
+    abrirMenu(false);
+    if (ESTREITO()) document.getElementById('members-panel').classList.add('hidden');
+    sincronizarGavetas();
+  }
+
+  document.getElementById('menu-btn').addEventListener('click', () => {
+    // Abrir os canais fecha os membros: duas gavetas abertas ao mesmo tempo
+    // não deixariam nada do chat à vista.
+    if (ESTREITO()) document.getElementById('members-panel').classList.add('hidden');
+    abrirMenu(!document.body.classList.contains('menu-aberto'));
+    sincronizarGavetas();
+  });
+
+  document.getElementById('gaveta-fundo').addEventListener('click', fecharGavetas);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') fecharGavetas(); });
+
+  // Escolher um canal fecha a gaveta: sem isso a pessoa toca no canal e
+  // continua olhando a lista, sem ver que a conversa mudou atrás.
+  document.getElementById('sidebar').addEventListener('click', (e) => {
+    if (!ESTREITO()) return;
+    if (e.target.closest('.channel-item, .voice-item, .vo-row')) fecharGavetas();
   });
 
   /* =========================================================================
@@ -2707,7 +2829,13 @@
     if (hadNone && sharers.length) VOICE.stageHidden = false;
 
     const shareBtn = document.getElementById('share-btn');
-    shareBtn.textContent = VOICE.screenVideoTrack ? '⏹️ Parar de compartilhar' : '🖥️ Compartilhar tela';
+    // No celular só o ícone: "Compartilhar tela" empurraria o nome do canal
+    // para fora da tela. O title continua dizendo o que o botão faz.
+    const curto = MOBILE_OK && ESTREITO();
+    shareBtn.textContent = VOICE.screenVideoTrack
+      ? (curto ? '⏹️' : '⏹️ Parar de compartilhar')
+      : (curto ? '🖥️' : '🖥️ Compartilhar tela');
+    shareBtn.title = VOICE.screenVideoTrack ? 'Parar de compartilhar' : 'Compartilhar tela';
     shareBtn.classList.toggle('live', !!VOICE.screenVideoTrack);
 
     const on = sharers.length > 0 && !VOICE.stageHidden;
@@ -2968,7 +3096,7 @@
 
     // Abre a lista sozinha quando a versão mudou desde a última visita — assim
     // quem entra depois de um deploy vê o que há de novo sem ir procurar.
-    if (RECURSOS_NOVOS){
+    if (RECURSOS_NOVOS && NOVIDADES.length){
       const visto = await safeGet('novidades-vistas', false);
       if (visto !== SALA_VERSAO){
         abrirModalNovidades();
@@ -2989,10 +3117,11 @@
       let s = null;
       try{ s = raw ? JSON.parse(raw) : null; }catch(e){ s = null; }
       if (s && s.usuario && s.exp && s.exp > Math.floor(Date.now()/1000)){
-        // O apelido é escolhido no index, mas só vale no dev: em produção e
-        // homologação a pessoa aparece com o nome da conta, para ninguém
-        // conversar com um apelido que não dá para rastrear.
-        state.nickname = (SO_DEV && s.apelido) ? s.apelido : s.usuario;
+        // O apelido é escolhido no index e vale em qualquer ambiente: a conta
+        // diz QUEM é, o apelido diz COMO a pessoa aparece. Sem apelido, aparece
+        // com o nome da conta. Quem administra as contas continua sabendo quem
+        // é quem — o vínculo apelido/conta está na sessão.
+        state.nickname = s.apelido || s.usuario;
         await boot();
       } else {
         // Sessão vencida entre o carregamento e aqui: de volta para a porta.
