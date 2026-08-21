@@ -796,7 +796,26 @@
     try{ location.reload(); }catch(e){}
   }
 
+  // Este arquivo tem DOIS blocos <script>, e cada um é um escopo próprio: o
+  // que é `function` aqui NÃO se vê no bloco de baixo, onde vive o resto do
+  // app. Foi exatamente esse o bug do botão "sair" — ele chamava
+  // apagarSessaoDeTodos() e voltarParaPorta() de lá, e recebia
+  // "is not defined", sem sair. Publicar em window é o mesmo caminho que este
+  // bloco já usa para `storage` e `agoraServidor`.
+  window.__SALA_PORTA = {
+    endereco: PORTA,
+    apagarSessao: apagarSessaoDeTodos,
+    sessao: sessaoDoEspaco,
+    voltar: voltarParaPorta,
+  };
+
   if (!sessaoDoEspaco()){
+    // O `return` abaixo encerra ESTE bloco <script>, e só ele. O bloco de
+    // baixo — o app inteiro — é independente e roda de qualquer forma, então a
+    // barreira precisa ser anunciada para ele também. Sem isto, a sala montava
+    // a interface completa por trás do redirecionamento; só não conseguia
+    // falar com o banco, porque `window.storage` é definido mais abaixo aqui.
+    window.__SALA_BARRADO = true;
     voltarParaPorta();
     return;
   }
@@ -926,9 +945,38 @@
 </script>
 <script>
 (function(){
+  // Sem sessão válida, o bloco de cima já mandou para a porta e marcou aqui.
+  // Blocos <script> são independentes: o `return` de lá não impede este de
+  // rodar. Sem esta linha, o app monta tudo — barra lateral, listeners, laço
+  // de polling — atrás de um redirecionamento em andamento.
+  if (window.__SALA_BARRADO) return;
+
   // Marcador de versão: serve para confirmar que o site publicado está mesmo
   // servindo este arquivo, e não uma cópia antiga em cache/CDN.
   const SALA_VERSAO = 'v3 · 2026-08-21';
+
+  // ---------- PONTE COM O PRIMEIRO BLOCO <script> ----------
+  // Estas duas moram no bloco de cima, junto do guard de entrada. Blocos
+  // <script> diferentes são escopos diferentes, então elas chegam aqui por
+  // window — ver o comentário lá. O plano B não depende de nada do outro
+  // bloco: se a ponte faltar, sair ainda funciona.
+  const PONTE_PORTA = window.__SALA_PORTA || {};
+  // Mesma lista do bloco de cima. Repetida de propósito: o plano B tem que
+  // funcionar justamente quando a ponte não veio.
+  const ESPACOS_SESSAO_LOCAL = ['', 'hmlsala:', 'devsala:'];
+
+  const apagarSessaoDeTodos = PONTE_PORTA.apagarSessao || function(){
+    for (const p of ESPACOS_SESSAO_LOCAL){
+      try{ localStorage.removeItem('local:' + p + 'sessao'); }catch(e){}
+      try{ localStorage.removeItem('local:' + p + 'nickname'); }catch(e){}
+    }
+  };
+
+  const voltarParaPorta = PONTE_PORTA.voltar || function(){
+    apagarSessaoDeTodos();
+    try{ location.replace(PONTE_PORTA.endereco || './'); }
+    catch(e){ try{ location.reload(); }catch(e2){} }
+  };
 
   // Login por usuário e senha, em TODOS os ambientes — produção inclusive.
   // Não existe mais senha compartilhada de sala: sem conta, ninguém entra.
