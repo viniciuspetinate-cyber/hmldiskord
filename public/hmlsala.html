@@ -186,6 +186,28 @@
     padding:16px 16px 12px; font-weight:700; font-size:15px; letter-spacing:1.2px;
     border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between;
   }
+  /* ---------- TROCA DE AMBIENTE ---------- */
+  /* Um botão, logo abaixo do nome do ambiente: mesma pergunta — "onde eu
+     estou?" — respondida de forma acionável. Leva de volta à tela de escolha,
+     em vez de pular direto para um ambiente: de lá dá para ver quantas pessoas
+     estão em cada um antes de decidir. */
+  #troca-amb{
+    padding:9px 12px 11px; border-bottom:1px solid var(--border); flex-shrink:0;
+  }
+  #troca-amb button{
+    width:100%; cursor:pointer; font-family:inherit;
+    display:flex; align-items:center; justify-content:center; gap:7px;
+    font-size:11.5px; font-weight:600;
+    padding:8px 0; border-radius:7px;
+    border:1px solid var(--border); color:var(--text-mid);
+    background:var(--bg-input);
+    transition:border-color .12s ease, color .12s ease, background .12s ease;
+  }
+  #troca-amb button:hover{
+    border-color:var(--accent); color:var(--accent); background:var(--bg-hover);
+  }
+  #troca-amb button .seta{ font-size:12px; opacity:.8; }
+
   #server-name .edit-btn{ cursor:pointer; color:var(--text-low); font-size:12px; }
   #server-name .edit-btn:hover{ color:var(--accent); }
   #server-name input{
@@ -506,11 +528,16 @@
      desenvolvimento. Os três arquivos continuam idênticos; quem liga a classe
      é o JS, conferindo o ambiente. Para valer nos três, veja MOBILE_OK.
 
-     A ideia: os três painéis lado a lado não cabem em 375px (a régua de 64px
-     mais os canais de 200px deixavam 111px para o chat). Aqui os laterais
-     saem do fluxo e viram gavetas sobre o conteúdo, e o chat fica com a tela
-     inteira. */
-  @media (max-width: 820px){
+     A ideia: os três painéis lado a lado não cabem num celular — em 375px a
+     régua de 64px mais os canais de 200px deixavam 111px para o chat. Abaixo do
+     corte os laterais saem do fluxo e viram gavetas sobre o conteúdo, e o chat
+     fica com a tela inteira.
+
+     O CORTE É 600px, e não mais: em 800px, um notebook pequeno, os três painéis
+     ainda cabem com folga (chat com 536px) e colapsar ali só atrapalharia.
+     Tablet em retrato (768px) também fica com os painéis. Quem ganha gaveta é
+     celular de verdade. Se mudar este número, mude ESTREITO() junto. */
+  @media (max-width: 600px){
     /* A régua só tem o ícone do ambiente; ele reaparece no topo da gaveta. */
     body.mobile-ok #rail{ display:none; }
 
@@ -581,6 +608,8 @@
 
     /* Alvos de toque na lista de voz e nos canais. */
     body.mobile-ok .channel-item, body.mobile-ok .vo-row{ padding-top:9px; padding-bottom:9px; }
+    body.mobile-ok #troca-amb{ padding:10px 12px 12px; }
+    body.mobile-ok #troca-amb button{ padding:12px 0; font-size:12.5px; }
   }
 </style>
 </head>
@@ -609,6 +638,12 @@
 
   <div id="sidebar">
     <div id="server-name"></div>
+    <!-- Volta para a tela de escolha de ambiente, sem sair da conta. -->
+    <div id="troca-amb">
+      <button id="troca-amb-btn" title="Escolher outro ambiente sem sair da conta">
+        <span class="seta">⇄</span><span>Trocar de ambiente</span>
+      </button>
+    </div>
 
     <div id="scroll-area">
       <div class="section-header">
@@ -1028,10 +1063,10 @@
   const AUDIO_POR_PESSOA = true;
 
   // Layout de celular: os painéis laterais viram gavetas e o chat ocupa a tela.
-  // Está só no dev enquanto é testado; para valer nos três, troque por true.
-  const MOBILE_OK = SO_DEV;
+  // Nasceu no dev, foi testado e vale nos três. Para desligar, ponha false.
+  const MOBILE_OK = true;
   // A largura tem que casar com o @media do CSS.
-  const ESTREITO = () => window.matchMedia('(max-width: 820px)').matches;
+  const ESTREITO = () => window.matchMedia('(max-width: 600px)').matches;
 
   // Volume do áudio da transmissão de tela, independente do volume das vozes.
   // Está só no dev enquanto é testado; para valer nos três, troque por true.
@@ -1530,6 +1565,24 @@
   window.__SALA_SAIR = sairDaConta;
 
   document.getElementById('leave-btn').addEventListener('click', sairDaConta);
+
+  // ---------- TROCA DE AMBIENTE ----------
+  // Volta para a tela de escolha, e NÃO apaga a sessão — é a diferença inteira
+  // entre este botão e o "sair". O index, encontrando a sessão válida, mostra
+  // direto a lista de ambientes, com o contador de quem está em cada um; não
+  // passa pelo login nem pela pergunta do apelido.
+  //
+  // Por isso ele NÃO usa voltarParaPorta(): aquela função apaga a sessão dos
+  // três espaços antes de navegar, que é justamente o que não se quer aqui.
+  function irParaEscolhaDeAmbiente(){
+    const destino = (window.__SALA_PORTA && window.__SALA_PORTA.endereco) || './';
+    console.info('[sala] voltando para a escolha de ambiente');
+    try{ location.href = destino; }
+    catch(e){ console.warn('[sala] não consegui voltar para a escolha de ambiente', e); }
+  }
+
+  document.getElementById('troca-amb-btn')
+    .addEventListener('click', irParaEscolhaDeAmbiente);
 
   // ---------- NOME DO SERVIDOR ----------
   async function loadServerName(){
