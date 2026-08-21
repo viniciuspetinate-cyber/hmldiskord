@@ -353,6 +353,23 @@
   #stage-actions .sbtn:hover{ background:var(--bg-hover); color:var(--text-hi); }
   #stage-actions .sbtn.on{ background:var(--accent); color:#1a1210; border-color:var(--accent); font-weight:700; }
 
+  /* Volume do áudio da transmissão de tela. Separado do volume das vozes de
+     propósito: som de jogo ou de vídeo chega muito mais alto que fala, e
+     baixar os dois juntos deixaria a conversa inaudível. */
+  #stage-vol{ display:flex; align-items:center; gap:6px; margin-right:5px; flex-shrink:0; }
+  #stage-vol .ico{ font-size:11px; opacity:.8; user-select:none; }
+  #stage-vol input[type=range]{
+    width:74px; height:3px; -webkit-appearance:none; appearance:none; cursor:pointer;
+    background:var(--border); border-radius:3px; outline:none;
+  }
+  #stage-vol input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:11px; height:11px; border-radius:50%;
+    background:var(--accent); cursor:pointer;
+  }
+  #stage-vol input[type=range]:disabled{ opacity:.35; cursor:default; }
+  #stage-vol input[type=range]:disabled::-webkit-slider-thumb{ background:var(--text-low); }
+  #stage-vol .pct{ font-size:10px; color:var(--text-low); width:32px; text-align:right; user-select:none; }
+
   #stage-video-wrap{ flex:1; position:relative; min-height:0; background:#000; }
   #stage-video{ width:100%; height:100%; object-fit:contain; display:block; background:#000; }
   #stage-status{
@@ -549,6 +566,11 @@
         <span id="stage-title"></span>
         <div id="stage-tabs"></div>
         <div id="stage-actions">
+          <span id="stage-vol" title="Volume do áudio de quem está compartilhando">
+            <span class="ico">🔊</span>
+            <input type="range" min="0" max="100" value="100">
+            <span class="pct">100%</span>
+          </span>
           <span class="sbtn" id="stage-theater" title="Esconder o chat e ampliar o vídeo">Teatro</span>
           <span class="sbtn" id="stage-pip" title="Picture-in-picture">PiP</span>
           <span class="sbtn" id="stage-full" title="Tela cheia">Tela cheia</span>
@@ -772,10 +794,18 @@
   // campo de apelido: a conta diz QUEM é, o apelido diz COMO aparecer.
   const MODO_CONTA = MODO_LOGIN;
 
-  // Ajustes exclusivos do ambiente de desenvolvimento: nome fixo, sem criar
-  // canais, e controle de volume por pessoa. Ficam no mesmo arquivo para os
-  // três continuarem idênticos — só este ambiente liga.
+  // Único ajuste que continua exclusivo do ambiente de desenvolvimento: o
+  // campo de apelido na tela de entrada. Fica no mesmo arquivo para os três
+  // continuarem idênticos — só este ambiente liga.
   const SO_DEV = /^devsala/.test(window.__SALA_ARQUIVO || '');
+
+  // Volume e silêncio por pessoa no canal de voz. Nasceu no dev, foi testado
+  // e passou a valer nos três ambientes. Para desligar, ponha false aqui.
+  const AUDIO_POR_PESSOA = true;
+
+  // Volume do áudio da transmissão de tela, independente do volume das vozes.
+  // Está só no dev enquanto é testado; para valer nos três, troque por true.
+  const VOLUME_TELA = SO_DEV;
 
   // Nome fixo por ambiente, igual nos três: quem abre a janela sabe onde está
   // pelo próprio nome, sem depender de selo ou de cor.
@@ -875,7 +905,17 @@
   // Lista das melhorias, mostrada ao lado da entrada e no botão do cabeçalho.
   // Para atualizar, mexa só aqui: o primeiro grupo é o mais recente.
   const NOVIDADES = [
-    { titulo: 'Novidades desta versão (v2)', itens: [
+    { titulo: 'Novidades desta versão (v3)', itens: [
+      '<b>Entrada só por conta</b> — cada pessoa tem usuário e senha próprios, nos três ambientes. A senha compartilhada da sala deixou de existir.',
+      '<b>Sem conta, ninguém entra</b> — não há mais atalho embutido na página caso o serviço de login fique fora do ar.',
+      '<b>Cada ambiente tem nome e cor próprios</b> — AiQueCall Prod, HML e Dev. O nome deixou de ser editável, para ninguém confundir onde está.',
+      '<b>Um segundo canal de voz</b> (Sala 2). Criar e apagar canais saiu de todos os ambientes.',
+      '<b>Ícone próprio</b> na aba do navegador e na tela de entrada.',
+      '<b>Volume por pessoa</b> no canal de voz — e dá para <b>parar de ouvir</b> alguém sem silenciar o resto, sem afetar o que os outros escutam.',
+      '<i>Só no Dev:</i> <b>volume do áudio da transmissão de tela</b>, separado do volume das vozes — o som de um jogo ou de um vídeo não abafa mais a conversa.',
+      '<i>Só no Dev:</i> <b>apelido opcional</b> na entrada — a conta diz quem você é, o apelido diz como você aparece na sala.',
+    ]},
+    { titulo: 'Versão anterior (v2)', itens: [
       '<b>A sala ficou 20× mais leve</b> — antes cada pessoa baixava o histórico do chat inteiro a cada 2,5s, mesmo sem mensagem nova.',
       '<b>Entrar na chamada ficou mais rápido</b>: a conexão não espera mais alguns segundos parada antes de começar.',
       '<b>A chamada não cai mais</b> quando o servidor engasga — quem já está conversando continua conversando.',
@@ -1502,6 +1542,7 @@
     joined: false,
     muted: false,
     deafened: false,
+    volumeTela: 1,    // 0..1  quanto se ouve o áudio de quem compartilha
     micStream: null, micTrack: null,
     screenStream: null, screenVideoTrack: null, screenAudioTrack: null, screenSurface: null,
     peers: {},        // sessionId -> peer
@@ -2084,6 +2125,7 @@
     const cur = VOICE.sharers.find(s => s.sid === VOICE.stageSid);
     const sv = document.getElementById('stage-video');
     if (sv && cur && !cur.self) sv.muted = v;
+    aplicarVolumeTela();
     if (v){
       VOICE.muted = true;
       if (VOICE.micTrack) VOICE.micTrack.enabled = false;
@@ -2094,7 +2136,7 @@
 
   function toggleDeafen(){ setDeafened(!VOICE.deafened); }
 
-  // ---------- volume e silêncio por pessoa (só no dev) ----------
+  // ---------- volume e silêncio por pessoa (nos três ambientes) ----------
   // A preferência é guardada pelo NOME, não pela sessão: a sessão muda a cada
   // recarregamento da página, e aí o ajuste se perderia toda hora.
   const chaveAudio = (nome) => (nome || '').trim().toLowerCase();
@@ -2107,14 +2149,14 @@
 
   function aplicarAudioDoPar(p){
     if (!p || !p.audioEl) return;
-    p.audioEl.volume = SO_DEV ? volumeDe(p.name) : 1;
-    p.audioEl.muted = VOICE.deafened || (SO_DEV && estaSilenciado(p.name));
+    p.audioEl.volume = AUDIO_POR_PESSOA ? volumeDe(p.name) : 1;
+    p.audioEl.muted = VOICE.deafened || (AUDIO_POR_PESSOA && estaSilenciado(p.name));
   }
   function aplicarAudioDeTodos(){ Object.values(VOICE.peers).forEach(aplicarAudioDoPar); }
 
   async function guardarPreferenciasAudio(){
     await safeSet('audio-por-pessoa', JSON.stringify({
-      volumes: VOICE.volumes, silenciados: VOICE.silenciados
+      volumes: VOICE.volumes, silenciados: VOICE.silenciados, tela: VOICE.volumeTela
     }), false);
   }
   async function carregarPreferenciasAudio(){
@@ -2124,8 +2166,51 @@
       const d = JSON.parse(raw);
       VOICE.volumes = d.volumes || {};
       VOICE.silenciados = d.silenciados || {};
+      if (typeof d.tela === 'number') VOICE.volumeTela = Math.max(0, Math.min(1, d.tela));
     }catch(e){}
   }
+
+  // ---------- volume do áudio da tela ----------
+  // Um controle só, porque o palco mostra uma transmissão por vez. Mora na
+  // barra do palco, e não na lista de pessoas, para deixar claro que mexe no
+  // som da tela e não na voz de quem compartilha.
+  function aplicarVolumeTela(){
+    const sv = document.getElementById('stage-video');
+    if (sv) sv.volume = VOLUME_TELA ? VOICE.volumeTela : 1;
+    const cx = document.getElementById('stage-vol');
+    if (!cx) return;
+    if (!VOLUME_TELA){ cx.style.display = 'none'; return; }
+    const cur = VOICE.sharers.find(s => s.sid === VOICE.stageSid);
+    // Quem compartilha nunca ouve o próprio áudio: o controle não teria efeito
+    // nenhum na tela dele. Melhor mostrar desligado que fingir que funciona.
+    const proprio = !!(cur && cur.self);
+    const faixa = cx.querySelector('input[type=range]');
+    const pct = cx.querySelector('.pct');
+    const v = Math.round(VOICE.volumeTela * 100);
+    if (faixa){
+      // Não escrever no campo enquanto a pessoa arrasta: o cursor pularia.
+      if (faixa !== document.activeElement && Number(faixa.value) !== v) faixa.value = v;
+      faixa.disabled = proprio || VOICE.deafened;
+    }
+    if (pct) pct.textContent = proprio ? '—' : v + '%';
+    cx.title = proprio
+      ? 'Você está compartilhando: seu próprio áudio nunca toca aqui'
+      : (VOICE.deafened ? 'Você está no modo surdo' : 'Volume do áudio de quem está compartilhando');
+  }
+
+  function definirVolumeTela(valor){
+    VOICE.volumeTela = Math.max(0, Math.min(1, valor));
+    aplicarVolumeTela();
+    guardarPreferenciasAudio();
+  }
+
+  (function ligarVolumeTela(){
+    const cx = document.getElementById('stage-vol');
+    if (!cx) return;
+    if (!VOLUME_TELA){ cx.style.display = 'none'; return; }
+    const faixa = cx.querySelector('input[type=range]');
+    if (faixa) faixa.addEventListener('input', () => definirVolumeTela(faixa.value / 100));
+  })();
 
   function definirVolume(nome, valor){
     VOICE.volumes[chaveAudio(nome)] = Math.max(0, Math.min(1, valor));
@@ -2589,6 +2674,7 @@
       video.play().catch(() => showUnblockAudio());
     }
     video.muted = cur.self ? true : VOICE.deafened;   // nunca tocar o próprio áudio
+    aplicarVolumeTela();
 
     const title = document.getElementById('stage-title');
     let tag = '';
@@ -2662,7 +2748,7 @@
         c + '|' + VOICE.presence[c].map(e => e.session + e.name + (e.muted?'m':'') + (e.sharing?'s':'')).sort().join(',')
       ).join(';'),
       Object.values(VOICE.peers).map(p => p.sid + ':' + (p.pc ? p.pc.connectionState : '-') + (p.dead?'!':'')).sort().join(','),
-      SO_DEV ? Object.keys(VOICE.silenciados).sort().join(',') : ''
+      AUDIO_POR_PESSOA ? Object.keys(VOICE.silenciados).sort().join(',') : ''
     ]);
     if (sig === VOICE._sig) return;
     VOICE._sig = sig;
@@ -2686,10 +2772,10 @@
           if (e.muted) icons.push('<span class="vicon bad" title="microfone desligado">🔇</span>');
           right = icons.join('');
         }
-        // No dev, cada pessoa (menos você) ganha controle de quanto ouvir.
-        const mudo = SO_DEV && !me && estaSilenciado(e.name);
+        // Cada pessoa (menos você) ganha controle de quanto ouvir.
+        const mudo = AUDIO_POR_PESSOA && !me && estaSilenciado(e.name);
         const vol = Math.round(volumeDe(e.name) * 100);
-        const controle = (SO_DEV && !me && isHere)
+        const controle = (AUDIO_POR_PESSOA && !me && isHere)
           ? '<div class="vo-som" data-nome="' + escapeHtml(e.name) + '">' +
               '<span class="escutar' + (mudo ? ' mudo' : '') + '" title="' +
                 (mudo ? 'Voltar a ouvir' : 'Parar de ouvir esta pessoa') + '">' +
@@ -2787,7 +2873,8 @@
     document.getElementById('my-avatar').style.background = colorFor(state.nickname);
     document.getElementById('my-avatar').textContent = initials(state.nickname);
 
-    if (SO_DEV) await carregarPreferenciasAudio();
+    if (AUDIO_POR_PESSOA) await carregarPreferenciasAudio();
+    aplicarVolumeTela();
     await loadServerName();
     renderServerName();
     await loadChannels();
