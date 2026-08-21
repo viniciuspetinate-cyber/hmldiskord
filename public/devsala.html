@@ -747,7 +747,12 @@
   // carrega a chave publicável do Supabase, então quem lê o código-fonte
   // alcança a tabela sem abrir esta página. Fechar isso de verdade exige
   // revogar o acesso anônimo no Supabase e rotear o banco por um servidor.
-  const PORTA = 'index.html';
+  // "./" e não "index.html": o Pages serve as salas em /sala, /hmlsala e
+  // /devsala, sem extensão, e "index.html" viraria /index.html — um endereço
+  // que depende do Pages redirecionar para "/". Com "./" a navegação vai direto
+  // para a raiz, que é onde o index é servido, seja o endereço /devsala ou
+  // /devsala.html.
+  const PORTA = './';
   const ESPACOS_SESSAO = ['', 'hmlsala:', 'devsala:'];
 
   function apagarSessaoDeTodos(){
@@ -1454,27 +1459,29 @@
     err.textContent = 'Login não configurado neste arquivo. Avise o administrador.';
   }
 
-  document.getElementById('leave-btn').addEventListener('click', async () => {
-    // ORDEM IMPORTA. Antes isto era `await leaveVoice()` primeiro, e a saída só
-    // acontecia depois: leaveVoice faz três remoções no banco, em série, e
-    // qualquer uma que demore ou estoure levava o clique a não fazer nada
-    // visível. Agora a sessão sai primeiro — é localStorage, instantâneo — e a
-    // limpeza da voz é o que pode falhar sem impedir de sair.
-    if (MODO_LOGIN) apagarSessaoDeTodos();
+  // ---------- SAIR DA CONTA ----------
+  // NADA de assíncrono entre o clique e a navegação. Duas versões anteriores
+  // deste botão falhavam calada: a primeira esperava `leaveVoice()`, que faz
+  // três remoções em série no banco; a segunda limitava essa espera a 2s, mas
+  // ainda punha um `await` antes de navegar. Qualquer coisa que quebre dentro
+  // de uma função `async` some numa promise rejeitada, sem erro na tela e sem
+  // sair. Agora a função é síncrona de ponta a ponta.
+  //
+  // A limpeza da voz continua acontecendo — só não é esperada. Se ela falhar,
+  // a presença expira sozinha pelo tempo de vida das chaves.
+  function sairDaConta(){
+    console.info('[sala] saindo da conta');
+    try{ apagarSessaoDeTodos(); }catch(e){ console.warn('[sala] falha ao apagar a sessão', e); }
     try{ window.storage.delete('nickname', false); }catch(e){}
+    try{ leaveVoice(); }catch(e){ console.warn('[sala] falha ao encerrar a voz', e); }
+    voltarParaPorta();
+  }
 
-    // Avisar os outros que você saiu é boa educação, não pré-requisito.
-    // Dois segundos no máximo, e depois vai embora de qualquer jeito.
-    try{
-      await Promise.race([
-        (async () => { await leaveVoice(); })(),
-        new Promise((r) => setTimeout(r, 2000)),
-      ]);
-    }catch(e){ console.warn('[sala] falha ao encerrar a voz na saída', e); }
+  // Exposto de propósito: rodar `__SALA_SAIR()` no console separa "o clique não
+  // chega no botão" de "a saída em si não funciona", sem precisar adivinhar.
+  window.__SALA_SAIR = sairDaConta;
 
-    if (MODO_LOGIN){ voltarParaPorta(); return; }
-    location.reload();
-  });
+  document.getElementById('leave-btn').addEventListener('click', sairDaConta);
 
   // ---------- NOME DO SERVIDOR ----------
   async function loadServerName(){

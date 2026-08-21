@@ -1,6 +1,17 @@
 # O navegador confere se há versão nova a cada carregamento, em vez de servir
 # a cópia guardada. É isto que evita ter que pedir Ctrl+Shift+R a todo mundo
 # depois de publicar — a meta tag dentro do HTML ajuda, mas o cabeçalho manda.
-/*.html
+#
+# ATENÇÃO À REGRA: a versão antiga era `/*.html`, e ela não pegava as salas.
+# O Pages serve as páginas sem extensão — a sala fica em /devsala, não em
+# /devsala.html — e a regra casa com o endereço PEDIDO, não com o nome do
+# arquivo no repositório. Resultado: justamente as páginas que mais mudam
+# ficavam sem o cabeçalho, e correção publicada podia não aparecer para quem
+# já tinha aberto a página antes.
+#
+# `/*` cobre tudo. O que existe aqui é pequeno, e revalidar custa uma
+# requisição condicional que volta 304 quando nada mudou.
+
+/*
   Cache-Control: no-cache, must-revalidate
   X-Content-Type-Options: nosniff
