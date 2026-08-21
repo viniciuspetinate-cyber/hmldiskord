@@ -555,7 +555,8 @@
       overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0;
     }
     body.mobile-ok #chat-header .head-btn{ font-size:11.5px; padding:7px 8px; flex-shrink:0; }
-    body.mobile-ok #novidades-btn{ display:none; }
+    /* O botão fica: sem a abertura automática, ele é o único caminho para a
+       lista de dentro da sala. Só o rótulo encurta, no JS que o cria. */
 
     body.mobile-ok #messages{ padding:12px 12px 6px; }
     body.mobile-ok #input-row{ padding:8px 12px 12px; }
@@ -1059,7 +1060,8 @@
       const b = document.createElement('div');
       b.className = 'head-btn first';
       b.id = 'novidades-btn';
-      b.textContent = '✨ Novidades';
+      // No celular só o ícone, senão o nome do canal fica sem espaço.
+      b.textContent = (MOBILE_OK && ESTREITO()) ? '✨' : '✨ Novidades';
       b.title = 'Ver o que mudou na sala';
       btnTela.classList.remove('first');   // o "empurra para a direita" passa a ser deste
       cab.insertBefore(b, btnTela);
@@ -1067,8 +1069,8 @@
     }
   }
 
-  // Lista das melhorias, mostrada ao lado da entrada e no botão do cabeçalho.
-  // Para atualizar, mexa só aqui: o primeiro grupo é o mais recente.
+  // A lista em si mora em novidades.js e é lida no topo deste script, em
+  // NOVIDADES. Aqui ficam só o gerador de HTML e o modal.
 
 
   // Um gerador só, usado na tela de login e no modal de dentro da sala.
@@ -1083,7 +1085,14 @@
       '<div class="rodape">versão ' + SALA_VERSAO + '<br>espaço de dados: ' + escapeHtml(window.__SALA_ESPACO || 'producao') + '</div>';
   }
 
+  // Montava a lista aberta ao lado da tela de entrada. Essa tela não aparece
+  // mais — a entrada é pelo index.html — e mesmo que voltasse, a lista só deve
+  // aparecer no clique. Fica desligada, e não apagada, para o dia em que a
+  // porta única for desligada e a tela de entrada volte a existir.
+  const MOSTRAR_NOVIDADES_NA_ENTRADA = false;
+
   function montarNovidades(){
+    if (!MOSTRAR_NOVIDADES_NA_ENTRADA) return;
     if (!NOVIDADES.length) return;
     const gate = document.getElementById('gate');
     if (!gate || document.getElementById('novidades')) return;
@@ -3094,15 +3103,14 @@
     // Some com ele aqui em vez de deixar isso como tarefa manual.
     safeDelete('members', true);
 
-    // Abre a lista sozinha quando a versão mudou desde a última visita — assim
-    // quem entra depois de um deploy vê o que há de novo sem ir procurar.
-    if (RECURSOS_NOVOS && NOVIDADES.length){
-      const visto = await safeGet('novidades-vistas', false);
-      if (visto !== SALA_VERSAO){
-        abrirModalNovidades();
-        await safeSet('novidades-vistas', SALA_VERSAO, false);
-      }
-    }
+    // A lista de melhorias NÃO abre sozinha. Abria quando a versão mudava
+    // desde a última visita, e virava uma janela na frente de quem só queria
+    // conversar. Agora é consulta voluntária: o botão ✨ Novidades do cabeçalho,
+    // e o mesmo botão na página inicial.
+    //
+    // Com isso a chave que guardava a última versão vista não serve mais.
+    // Apagar aqui evita deixar lixo no navegador de quem já usou a sala.
+    safeDelete('novidades-vistas', false);
   }
 
   if (RECURSOS_NOVOS) montarNovidades();
