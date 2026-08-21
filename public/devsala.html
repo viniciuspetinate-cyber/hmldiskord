@@ -637,6 +637,56 @@
   window.__SALA_NS = NS;                                    // "" quando é produção
   window.__SALA_ESPACO = NS ? NS.slice(0, -1) : "producao"; // nome legível do espaço
 
+  // ---------- PORTA ÚNICA ----------
+  // O login mora no index.html, que confere a conta no Worker e grava a sessão
+  // para os três ambientes de uma vez. Este arquivo não tem mais tela de
+  // entrada própria: sem sessão válida, volta para a porta.
+  //
+  // A conferência é aqui, antes de montar qualquer coisa, por dois motivos: a
+  // sessão está no localStorage e é leitura instantânea, e adiar faria o
+  // formulário antigo piscar na tela antes do redirecionamento.
+  //
+  // O QUE ISTO É: uma tranca de conveniência, que impede entrar na sala sem
+  // passar pelo login. O QUE NÃO É: proteção dos dados. O arquivo é estático e
+  // carrega a chave publicável do Supabase, então quem lê o código-fonte
+  // alcança a tabela sem abrir esta página. Fechar isso de verdade exige
+  // revogar o acesso anônimo no Supabase e rotear o banco por um servidor.
+  const PORTA = 'index.html';
+  const ESPACOS_SESSAO = ['', 'hmlsala:', 'devsala:'];
+
+  function apagarSessaoDeTodos(){
+    // Sair de um ambiente sai de todos: a sessão é uma só, gravada nos três.
+    // Limpar só o daqui deixaria o index achando que ainda há login válido.
+    for (const p of ESPACOS_SESSAO){
+      try{ localStorage.removeItem('local:' + p + 'sessao'); }catch(e){}
+      try{ localStorage.removeItem('local:' + p + 'nickname'); }catch(e){}
+    }
+  }
+
+  function sessaoDoEspaco(){
+    try{
+      const raw = localStorage.getItem('local:' + NS + 'sessao');
+      if (!raw) return null;
+      const s = JSON.parse(raw);
+      return (s && s.usuario && s.exp && s.exp > Math.floor(Date.now()/1000)) ? s : null;
+    }catch(e){ return null; }
+  }
+
+  // Uma função só para a volta à porta, usada aqui e no botão de sair. O
+  // redirecionamento pode falhar (navegação bloqueada, arquivo aberto direto
+  // do disco), e nesse caso o que fecha a tranca é o `return` de quem chama:
+  // sem sessão o app não é montado, aconteça o que acontecer com a navegação.
+  function voltarParaPorta(){
+    apagarSessaoDeTodos();
+    try{ location.replace(PORTA); }
+    catch(e){ try{ location.href = PORTA; }catch(e2){} }
+  }
+
+  if (!sessaoDoEspaco()){
+    voltarParaPorta();
+    return;
+  }
+
   // O prefixo entra na ida e sai na volta, então quem chama continua vendo as
   // chaves como sempre — importante porque a sinalização faz split(":") nelas.
   // ---------- RELÓGIO DO SERVIDOR ----------
@@ -768,7 +818,11 @@
 
   // Login por usuário e senha, em TODOS os ambientes — produção inclusive.
   // Não existe mais senha compartilhada de sala: sem conta, ninguém entra.
-  // Cole aqui a URL do Worker de login; vazio = arquivo mal configurado.
+  //
+  // A TELA de login mudou de lugar: agora é o index.html que pede a conta e
+  // grava a sessão. Este endereço fica aqui só porque o arquivo ainda o usa
+  // para reconhecer que o modo de login está ligado — e para a tela antiga
+  // continuar funcionando se algum dia a porta única for desligada.
   const AUTH_ENDPOINT = 'https://sala-auth.vinicius-petinate.workers.dev';
   window.__SALA_VERSAO = SALA_VERSAO;
   console.info('[sala] versão ' + SALA_VERSAO + ' · espaço de dados: ' + window.__SALA_ESPACO);
@@ -908,6 +962,8 @@
     { titulo: 'Novidades desta versão (v3)', itens: [
       '<b>Entrada só por conta</b> — cada pessoa tem usuário e senha próprios, nos três ambientes. A senha compartilhada da sala deixou de existir.',
       '<b>Sem conta, ninguém entra</b> — não há mais atalho embutido na página caso o serviço de login fique fora do ar.',
+      '<b>Uma porta só</b> — o login agora é na página inicial, e vale para os três ambientes de uma vez. Abrir uma sala direto no endereço leva de volta para lá.',
+      '<b>Quem está onde</b> — a página inicial mostra quantas pessoas estão em cada ambiente antes de você escolher.',
       '<b>Cada ambiente tem nome e cor próprios</b> — AiQueCall Prod, HML e Dev. O nome deixou de ser editável, para ninguém confundir onde está.',
       '<b>Um segundo canal de voz</b> (Sala 2). Criar e apagar canais saiu de todos os ambientes.',
       '<b>Ícone próprio</b> na aba do navegador e na tela de entrada.',
@@ -1306,7 +1362,7 @@
   document.getElementById('leave-btn').addEventListener('click', async () => {
     await leaveVoice();
     try{ await window.storage.delete('nickname', false); }catch(e){}
-    if (MODO_LOGIN){ try{ await window.storage.delete('sessao', false); }catch(e){} }
+    if (MODO_LOGIN){ voltarParaPorta(); return; }
     location.reload();
   });
 
@@ -2933,11 +2989,14 @@
       let s = null;
       try{ s = raw ? JSON.parse(raw) : null; }catch(e){ s = null; }
       if (s && s.usuario && s.exp && s.exp > Math.floor(Date.now()/1000)){
-        state.nickname = s.apelido || s.usuario;
+        // O apelido é escolhido no index, mas só vale no dev: em produção e
+        // homologação a pessoa aparece com o nome da conta, para ninguém
+        // conversar com um apelido que não dá para rastrear.
+        state.nickname = (SO_DEV && s.apelido) ? s.apelido : s.usuario;
         await boot();
       } else {
-        if (s) await safeDelete('sessao', false);   // sessão vencida
-        document.getElementById('nick-input').focus();
+        // Sessão vencida entre o carregamento e aqui: de volta para a porta.
+        voltarParaPorta();
       }
       return;
     }
