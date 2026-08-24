@@ -309,6 +309,31 @@
   #call-bar .cbtn.on{ background:#3a1e22; color:#ff9d9d; border-color:#5a2c33; }
   #call-bar .cbtn.live{ background:#1e3a26; color:#8ff0ab; border-color:#2c5a38; }
 
+  /* ---------- PORTÃO DE RUÍDO ---------- */
+  /* Fica FORA da #call-bar de propósito: aquela div é reescrita por innerHTML a
+     cada ciclo de presença, e um slider ali dentro seria destruído no meio do
+     arraste. Aqui o nó é criado uma vez e nunca redesenhado. */
+  #portao{ display:none; padding:8px 10px 10px; background:#182119; border-top:1px solid var(--border); }
+  body.in-call.portao-on #portao{ display:block; }
+  #portao .linha{ display:flex; align-items:center; gap:6px; margin-bottom:6px; }
+  #portao .rot{ font-size:11px; color:var(--text-low); flex:1; }
+  #portao .estado{
+    font-size:9.5px; font-weight:700; letter-spacing:.5px; text-transform:uppercase;
+    padding:2px 6px; border-radius:20px; border:1px solid var(--border);
+    color:var(--text-low); background:var(--bg-input); flex-shrink:0;
+  }
+  #portao .estado.aberto{ color:#8ff0ab; border-color:#2c5a38; background:#1e3a26; }
+  #portao .estado.desligado{ opacity:.6; }
+  #portao input[type=range]{
+    width:100%; height:3px; -webkit-appearance:none; appearance:none; cursor:pointer;
+    background:var(--border); border-radius:3px; outline:none;
+  }
+  #portao input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:12px; height:12px; border-radius:50%;
+    background:var(--accent); cursor:pointer;
+  }
+  #portao .dica{ font-size:9.5px; color:var(--text-low); margin-top:5px; line-height:1.45; }
+
   #user-bar{
     padding:10px 12px; border-top:1px solid var(--border); display:flex; align-items:center; gap:8px;
     background:var(--bg-rail);
@@ -668,6 +693,16 @@
     </div>
 
     <div id="call-bar"></div>
+    <!-- Portão de ruído. Só aparece em chamada, e só onde PORTAO_RUIDO liga. -->
+    <div id="portao">
+      <div class="linha">
+        <span class="rot">Portão de ruído</span>
+        <span class="estado" id="portao-estado">—</span>
+      </div>
+      <input id="portao-limiar" type="range" min="0" max="100" value="18"
+             title="Mais à direita corta mais. Tudo à esquerda desliga.">
+      <div class="dica">Fecha o microfone quando você não está falando. Em zero, fica sempre aberto.</div>
+    </div>
 
     <div id="user-bar">
       <div class="avatar" id="my-avatar"></div>
@@ -1071,6 +1106,15 @@
   // Volume do áudio da transmissão de tela, independente do volume das vozes.
   // Está só no dev enquanto é testado; para valer nos três, troque por true.
   const VOLUME_TELA = SO_DEV;
+
+  // Portão de ruído no microfone: fecha quando você não está falando, para
+  // teclado, ventilador e conversa ao fundo não saírem. Só no dev enquanto é
+  // testado; para valer nos três, troque por true.
+  //
+  // NÃO substitui o noiseSuppression nativo do navegador — soma a ele. Um
+  // modelo de rede neural (RNNoise e afins) exigiria DESLIGAR o nativo, porque
+  // é treinado em áudio cru; um portão de ganho não tem esse problema.
+  const PORTAO_RUIDO = SO_DEV;
 
   // Nome fixo por ambiente, igual nos três: quem abre a janela sabe onde está
   // pelo próprio nome, sem depender de selo ou de cor.
@@ -1932,10 +1976,16 @@
         VOICE.micStream = null; VOICE.micTrack = null;
         showToast('O microfone não respondeu a tempo — você entrou só para ouvir. Veja se há um aviso de permissão pendente no navegador.');
       } else {
-        VOICE.micStream = r;
-        VOICE.micTrack = VOICE.micStream.getAudioTracks()[0];
+        VOICE.micStream = r;                      // sempre o CRU, para poder parar o microfone depois
+        const comPortao = montarPortao(VOICE.micStream);
+        // A faixa que vai para os outros é a processada, quando o portão sobe.
+        // Se ele não subir, segue o microfone cru — nunca fica sem áudio.
+        VOICE.micTrack = comPortao ? comPortao.faixa : VOICE.micStream.getAudioTracks()[0];
         VOICE.micTrack.enabled = !VOICE.muted;
-        attachAnalyser(SID, VOICE.micStream);
+        // O indicador de "está falando" mede a faixa que os outros recebem, e
+        // não o microfone cru: assim ele apaga quando o portão fecha, em vez de
+        // acender para um ruído que ninguém está ouvindo.
+        attachAnalyser(SID, comPortao ? comPortao.stream : VOICE.micStream);
       }
     }catch(e){
       VOICE.micStream = null; VOICE.micTrack = null;
@@ -1977,6 +2027,7 @@
 
     stopScreen(true);
     Object.keys(VOICE.peers).forEach(destroyPeer);
+    desmontarPortao();
     if (VOICE.micStream) VOICE.micStream.getTracks().forEach(t => { try{ t.stop(); }catch(e){} });
     VOICE.micStream = null; VOICE.micTrack = null;
     delete VOICE.analysers[SID];
@@ -2588,6 +2639,173 @@
       if (AC.state === 'suspended') AC.resume();
     }catch(e){}
   }
+  // ---------- PORTÃO DE RUÍDO ----------
+  // Cadeia: microfone -> passa-alta -> ganho -> faixa que vai para os outros.
+  // O passa-alta em 90 Hz tira trepidação de mesa e ronco de ar-condicionado,
+  // que o supressor nativo deixa passar. O ganho é o portão em si.
+  //
+  // A medição é feita DEPOIS do passa-alta: medir antes faria um ronco de
+  // 50 Hz manter o portão aberto sem ninguém falar.
+  const PORTAO = {
+    grafo: null,
+    timer: null,
+    aberto: true,
+    ultimaVoz: 0,
+    limiar: 0.018,        // RMS; o slider vai de 0 a 0.1
+    estadoNaTela: null,
+  };
+
+  const PORTAO_ESPERA_MS = 250;   // tempo que segue aberto depois da última sílaba
+  const PORTAO_HISTERESE = 0.6;   // fecha em 60% do limiar que abre
+
+  function montarPortao(streamCru){
+    if (!PORTAO_RUIDO) return null;
+    try{
+      resumeAudio();
+      // Sem contexto de áudio rodando, o destino de mídia sairia MUDO e ninguém
+      // ouviria a pessoa. Nesse caso não monta nada e o microfone cru segue.
+      if (!AC || AC.state !== 'running') {
+        console.warn('[sala] portão de ruído desligado: contexto de áudio em', AC && AC.state);
+        return null;
+      }
+      const src = AC.createMediaStreamSource(streamCru);
+      const passaAlta = AC.createBiquadFilter();
+      passaAlta.type = 'highpass';
+      passaAlta.frequency.value = 90;
+      const medidor = AC.createAnalyser();
+      medidor.fftSize = 512;
+      const gate = AC.createGain();
+      gate.gain.value = 1;
+      const saida = AC.createMediaStreamDestination();
+
+      src.connect(passaAlta);
+      passaAlta.connect(medidor);
+      passaAlta.connect(gate);
+      gate.connect(saida);
+
+      const faixa = saida.stream.getAudioTracks()[0];
+      if (!faixa) return null;
+
+      PORTAO.grafo = { src, passaAlta, medidor, gate, saida, dados: new Uint8Array(medidor.fftSize) };
+      PORTAO.aberto = true;
+      PORTAO.ultimaVoz = 0;
+      iniciarLacoDoPortao();
+      atualizarControlePortao();
+      return { stream: saida.stream, faixa };
+    }catch(e){
+      console.warn('[sala] portão de ruído indisponível', e);
+      PORTAO.grafo = null;
+      return null;
+    }
+  }
+
+  function desmontarPortao(){
+    if (PORTAO.timer){ clearInterval(PORTAO.timer); PORTAO.timer = null; }
+    const g = PORTAO.grafo;
+    PORTAO.grafo = null;
+    if (!g) return;
+    try{ g.saida.stream.getTracks().forEach(function(t){ try{ t.stop(); }catch(e){} }); }catch(e){}
+    [g.src, g.passaAlta, g.medidor, g.gate].forEach(function(no){ try{ no.disconnect(); }catch(e){} });
+    PORTAO.estadoNaTela = null;
+  }
+
+  function mandarGanho(valor){
+    const g = PORTAO.grafo;
+    if (!g) return;
+    // setTargetAtTime faz a rampa na thread de áudio: mesmo se este timer
+    // atrasar, a transição termina suave. Ganho em degrau viraria estalo.
+    try{ g.gate.gain.setTargetAtTime(valor, AC.currentTime, valor > 0.5 ? 0.008 : 0.05); }
+    catch(e){ try{ g.gate.gain.value = valor; }catch(e2){} }
+  }
+
+  function passoDoPortao(){
+    const g = PORTAO.grafo;
+    if (!g) return;
+
+    // Limiar zero = portão desligado, sempre aberto.
+    if (PORTAO.limiar <= 0){
+      if (!PORTAO.aberto){ PORTAO.aberto = true; mandarGanho(1); }
+      pintarEstadoPortao('desligado');
+      return;
+    }
+
+    // Aba em segundo plano: setInterval é estrangulado para uma vez por minuto, e um
+    // portão congelado FECHADO deixaria a pessoa muda sem ela perceber. Melhor
+    // transmitir ruído que emudecer alguém, então abre e espera voltar.
+    if (document.visibilityState !== 'visible'){
+      if (!PORTAO.aberto){ PORTAO.aberto = true; mandarGanho(1); }
+      pintarEstadoPortao('aberto');
+      return;
+    }
+
+    g.medidor.getByteTimeDomainData(g.dados);
+    let soma = 0;
+    for (let i = 0; i < g.dados.length; i++){ const v = (g.dados[i] - 128) / 128; soma += v * v; }
+    const rms = Math.sqrt(soma / g.dados.length);
+
+    const agora = (typeof performance !== 'undefined' && performance.now) ? performance.now() : 0;
+    const limiarFecha = PORTAO.limiar * PORTAO_HISTERESE;
+
+    // Histerese: abre no limiar cheio, fecha só bem abaixo dele. Com um limiar
+    // só, o portão bateria sem parar em quem fala perto do corte.
+    if (rms >= PORTAO.limiar){
+      PORTAO.ultimaVoz = agora;
+      if (!PORTAO.aberto){ PORTAO.aberto = true; mandarGanho(1); }
+    } else if (PORTAO.aberto && rms < limiarFecha){
+      // Espera antes de fechar: sem ela, a pausa entre duas palavras cortaria a
+      // frase no meio e o começo da seguinte sairia comido.
+      if (agora - PORTAO.ultimaVoz > PORTAO_ESPERA_MS){
+        PORTAO.aberto = false;
+        mandarGanho(0);
+      }
+    }
+    pintarEstadoPortao(PORTAO.aberto ? 'aberto' : 'fechado');
+  }
+
+  function pintarEstadoPortao(estado){
+    if (PORTAO.estadoNaTela === estado) return;   // sem reescrever o DOM a 25 Hz
+    PORTAO.estadoNaTela = estado;
+    const el = document.getElementById('portao-estado');
+    if (!el) return;
+    el.textContent = estado;
+    el.classList.toggle('aberto', estado === 'aberto');
+    el.classList.toggle('desligado', estado === 'desligado');
+  }
+
+  function iniciarLacoDoPortao(){
+    if (PORTAO.timer) return;
+    // 40ms: rápido o bastante para não comer sílabas, devagar o bastante para
+    // não pesar. requestAnimationFrame seria pior — para junto com a aba.
+    PORTAO.timer = setInterval(passoDoPortao, 40);
+  }
+
+  function atualizarControlePortao(){
+    const faixa = document.getElementById('portao-limiar');
+    if (faixa) faixa.value = String(Math.round(PORTAO.limiar * 1000));
+  }
+
+  if (PORTAO_RUIDO){
+    document.body.classList.add('portao-on');
+    const faixa = document.getElementById('portao-limiar');
+    if (faixa){
+      faixa.addEventListener('input', function(){
+        // 0..100 no slider -> 0..0.1 de RMS. O indicador de quem está falando
+        // usa 0.025 como referência, então o padrão 18 fica um pouco abaixo.
+        PORTAO.limiar = Number(faixa.value) / 1000;
+        PORTAO.estadoNaTela = null;
+        safeSet('portao-limiar', String(faixa.value), false);
+      });
+    }
+    // Preferência por navegador, como o volume por pessoa.
+    (async function(){
+      const v = await safeGet('portao-limiar', false);
+      if (v !== null && v !== undefined && v !== ''){
+        PORTAO.limiar = Number(v) / 1000;
+        atualizarControlePortao();
+      }
+    })();
+  }
+
   function attachAnalyser(id, stream){
     try{
       resumeAudio();
