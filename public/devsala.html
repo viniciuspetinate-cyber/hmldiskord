@@ -8,7 +8,7 @@
      todo mundo depois de publicar. O cabeçalho HTTP da Vercel manda mais que
      isto, mas os dois apontam para o mesmo lado. -->
 <meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
-<!-- SALA-VERSAO: v3 · 2026-08-21 — desempenho, estabilidade e placa de captura -->
+<!-- SALA-VERSAO: v4 · 2026-08-24 — porta única, celular, portão de ruído -->
 <title>Sala</title>
 <style>
   :root{
@@ -1062,7 +1062,7 @@
 
   // Marcador de versão: serve para confirmar que o site publicado está mesmo
   // servindo este arquivo, e não uma cópia antiga em cache/CDN.
-  const SALA_VERSAO = 'v3 · 2026-08-21';
+  const SALA_VERSAO = 'v4 · 2026-08-24';
 
   // ---------- PONTE COM O PRIMEIRO BLOCO <script> ----------
   // Estas duas moram no bloco de cima, junto do guard de entrada. Blocos
@@ -1145,6 +1145,16 @@
   // Volume do áudio da transmissão de tela, independente do volume das vozes.
   // Está só no dev enquanto é testado; para valer nos três, troque por true.
   const VOLUME_TELA = SO_DEV;
+
+  // Assistir à tela compartilhada é OPCIONAL: o palco não abre sozinho, e em
+  // vez dele aparece um convite. Só no dev enquanto é testado; para valer nos
+  // três, troque por true.
+  //
+  // ATENÇÃO À DIFERENÇA. Isto é MUDANÇA DE COMPORTAMENTO, e por isso está preso
+  // ao ambiente. A CORREÇÃO do bug — fechar o palco deixou de ser definitivo,
+  // porque o convite reabre — vale nos três, sem flag. Produção e homologação
+  // seguem abrindo o palco sozinhas como sempre, só que agora dá para voltar.
+  const ASSISTIR_OPCIONAL = SO_DEV;
 
   // Portão de ruído no microfone: fecha quando você não está falando, para
   // teclado, ventilador e conversa ao fundo não saírem. Só no dev enquanto é
@@ -1957,10 +1967,11 @@
     analysers: {},
     sharers: [],
     stageSid: null,
-    // Começa FECHADO: assistir é opção de quem recebe, não imposição de quem
-    // compartilha. Quem inicia o próprio compartilhamento abre o palco na hora
-    // (ver stopScreen/startScreen), porque quem envia precisa ver o que envia.
-    stageHidden: true,
+    // Onde assistir é opcional, começa FECHADO: é opção de quem recebe, não
+    // imposição de quem compartilha. Nos outros, começa aberto como sempre foi.
+    // Quem inicia o próprio compartilhamento abre o palco na hora (ver
+    // startScreen), porque quem envia precisa ver o que envia.
+    stageHidden: ASSISTIR_OPCIONAL,
     timer: null,
     ticker: null,
     ice: null,
@@ -3255,17 +3266,22 @@
       const temVideo = !!(vt && vt.readyState === 'live' && !vt.muted);
       if ((e && e.sharing) || temVideo) sharers.push({ sid: p.sid, name: p.name, self: false });
     }
+    const semNinguemAntes = VOICE.sharers.length === 0;
     VOICE.sharers = sharers;
-    // AQUI ESTAVA O BUG. Antes: `if (hadNone && sharers.length)
-    // VOICE.stageHidden = false;` — a única coisa no arquivo que reabria o
-    // palco, e só na transição de zero para um compartilhamento. Quem fechava
-    // o palco com alguém JÁ compartilhando ficava sem volta: nada mais zerava
-    // a flag, e só sair e entrar na voz resolvia.
+
+    // AQUI ESTAVA O BUG: esta linha era a ÚNICA coisa no arquivo que reabria o
+    // palco, e só disparava na transição de zero para um compartilhamento. Quem
+    // fechava o palco com alguém JÁ compartilhando ficava sem volta — nada mais
+    // zerava a flag, e só sair e entrar na voz resolvia.
     //
-    // Agora não há abertura automática. Em troca existe o convite logo abaixo,
-    // que é o caminho de volta que faltava. A escolha fica grudada: se você
-    // estava assistindo quando a pessoa parou, o próximo compartilhamento dela
-    // abre sozinho; se você tinha fechado, continua fechado.
+    // A correção NÃO foi tirar esta linha: foi o convite logo abaixo, que dá o
+    // caminho de volta e vale nos três ambientes. A linha continua onde os
+    // ambientes ainda abrem o palco sozinhos, que é o comportamento de sempre.
+    //
+    // Onde assistir é opcional, ela não roda: nada abre sem a pessoa pedir, e a
+    // escolha fica grudada — se estava assistindo quando o outro parou, o
+    // próximo compartilhamento abre sozinho; se tinha fechado, continua fechado.
+    if (!ASSISTIR_OPCIONAL && semNinguemAntes && sharers.length) VOICE.stageHidden = false;
 
     const shareBtn = document.getElementById('share-btn');
     // No celular só o ícone: "Compartilhar tela" empurraria o nome do canal
