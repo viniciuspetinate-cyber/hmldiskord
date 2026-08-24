@@ -309,6 +309,41 @@
   #call-bar .cbtn.on{ background:#3a1e22; color:#ff9d9d; border-color:#5a2c33; }
   #call-bar .cbtn.live{ background:#1e3a26; color:#8ff0ab; border-color:#2c5a38; }
 
+  /* ---------- PORTÃO DE RUÍDO ---------- */
+  /* Fica FORA da #call-bar de propósito: aquela div é reescrita por innerHTML a
+     cada ciclo de presença, e um slider ali dentro seria destruído no meio do
+     arraste. Aqui o nó é criado uma vez e nunca redesenhado. */
+  #portao{ display:none; padding:8px 10px 10px; background:#182119; border-top:1px solid var(--border); }
+  body.in-call.portao-on #portao{ display:block; }
+  #portao .linha{ display:flex; align-items:center; gap:6px; margin-bottom:6px; }
+  #portao .rot{ font-size:11px; color:var(--text-low); flex:1; }
+  #portao .estado{
+    font-size:9.5px; font-weight:700; letter-spacing:.5px; text-transform:uppercase;
+    padding:2px 6px; border-radius:20px; border:1px solid var(--border);
+    color:var(--text-low); background:var(--bg-input); flex-shrink:0;
+  }
+  #portao .estado.aberto{ color:#8ff0ab; border-color:#2c5a38; background:#1e3a26; }
+  #portao .estado.desligado{ opacity:.6; }
+  #portao input[type=range]{
+    width:100%; height:3px; -webkit-appearance:none; appearance:none; cursor:pointer;
+    background:var(--border); border-radius:3px; outline:none;
+  }
+  #portao input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:12px; height:12px; border-radius:50%;
+    background:var(--accent); cursor:pointer;
+  }
+  /* Legenda de direção. Sem ela o slider não diz qual lado faz o quê, e a
+     pessoa descobre por tentativa — na chamada, ao vivo, com plateia. */
+  #portao .escala{
+    display:flex; align-items:center; justify-content:space-between;
+    margin-top:4px; font-size:11px; color:var(--text-low); user-select:none;
+  }
+  #portao .escala .sinal{ font-weight:700; width:10px; text-align:center; }
+  #portao .escala .nome{
+    font-size:9px; font-weight:700; letter-spacing:.8px; text-transform:uppercase;
+  }
+  #portao .dica{ font-size:9.5px; color:var(--text-low); margin-top:5px; line-height:1.45; }
+
   #user-bar{
     padding:10px 12px; border-top:1px solid var(--border); display:flex; align-items:center; gap:8px;
     background:var(--bg-rail);
@@ -351,6 +386,25 @@
     border-bottom:1px solid var(--border); flex:1 1 62%; min-height:0;
   }
   body.stage-on #stage{ display:flex; }
+
+  /* ---------- CONVITE PARA ASSISTIR ---------- */
+  /* Aparece quando alguém está compartilhando e o palco está fechado. Existe
+     por dois motivos: assistir passou a ser opcional (o vídeo não é mais
+     empurrado na cara de ninguém), e quem fecha o palco precisa de um caminho
+     de volta — antes não havia nenhum, e só sair e entrar na voz resolvia. */
+  #convite-tela{
+    display:none; align-items:center; gap:9px; flex-shrink:0;
+    padding:9px 14px; background:#1e3a26; border-bottom:1px solid #2c5a38;
+    font-size:12.5px; color:#8ff0ab;
+  }
+  body.convite-on #convite-tela{ display:flex; }
+  #convite-tela .quem{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #convite-tela button{
+    flex-shrink:0; cursor:pointer; font-family:inherit; font-size:12px; font-weight:700;
+    padding:6px 12px; border-radius:6px; border:1px solid #3ba55d;
+    background:#3ba55d; color:#0f1a12;
+  }
+  #convite-tela button:hover{ filter:brightness(1.08); }
   body.stage-on #messages{ flex:0 0 30%; }
   body.theater #messages, body.theater #input-row{ display:none; }
   body.theater #stage{ flex:1 1 100%; }
@@ -585,6 +639,8 @@
     /* O botão fica: sem a abertura automática, ele é o único caminho para a
        lista de dentro da sala. Só o rótulo encurta, no JS que o cria. */
 
+    body.mobile-ok #convite-tela{ padding:11px 12px; font-size:12px; }
+    body.mobile-ok #convite-tela button{ padding:9px 13px; }
     body.mobile-ok #messages{ padding:12px 12px 6px; }
     body.mobile-ok #input-row{ padding:8px 12px 12px; }
     /* 16px evita o zoom automático do Safari ao focar o campo. */
@@ -668,6 +724,19 @@
     </div>
 
     <div id="call-bar"></div>
+    <!-- Portão de ruído. Só aparece em chamada, e só onde PORTAO_RUIDO liga. -->
+    <div id="portao">
+      <div class="linha">
+        <span class="rot">Portão de ruído</span>
+        <span class="estado" id="portao-estado">—</span>
+      </div>
+      <input id="portao-limiar" type="range" min="0" max="100" value="18"
+             title="Para a direita isola mais ruído, e corre mais risco de cortar sílaba. Tudo à esquerda desliga.">
+      <div class="escala">
+        <span class="sinal">−</span><span class="nome">Isolamento</span><span class="sinal">+</span>
+      </div>
+      <div class="dica">Use o menor valor que ainda mostre <b>fechado</b> com você calado. Zero desliga.</div>
+    </div>
 
     <div id="user-bar">
       <div class="avatar" id="my-avatar"></div>
@@ -701,13 +770,18 @@
           <span class="sbtn" id="stage-theater" title="Esconder o chat e ampliar o vídeo">Teatro</span>
           <span class="sbtn" id="stage-pip" title="Picture-in-picture">PiP</span>
           <span class="sbtn" id="stage-full" title="Tela cheia">Tela cheia</span>
-          <span class="sbtn" id="stage-hide" title="Fechar o palco">✕</span>
+          <span class="sbtn" id="stage-hide" title="Parar de ver — dá para reabrir depois">✕</span>
         </div>
       </div>
       <div id="stage-video-wrap">
         <video id="stage-video" autoplay playsinline></video>
         <div id="stage-status"></div>
       </div>
+    </div>
+
+    <div id="convite-tela">
+      <span class="quem" id="convite-texto"></span>
+      <button id="convite-btn">Assistir</button>
     </div>
 
     <div id="messages"></div>
@@ -1071,6 +1145,15 @@
   // Volume do áudio da transmissão de tela, independente do volume das vozes.
   // Está só no dev enquanto é testado; para valer nos três, troque por true.
   const VOLUME_TELA = SO_DEV;
+
+  // Portão de ruído no microfone: fecha quando você não está falando, para
+  // teclado, ventilador e conversa ao fundo não saírem. Só no dev enquanto é
+  // testado; para valer nos três, troque por true.
+  //
+  // NÃO substitui o noiseSuppression nativo do navegador — soma a ele. Um
+  // modelo de rede neural (RNNoise e afins) exigiria DESLIGAR o nativo, porque
+  // é treinado em áudio cru; um portão de ganho não tem esse problema.
+  const PORTAO_RUIDO = SO_DEV;
 
   // Nome fixo por ambiente, igual nos três: quem abre a janela sabe onde está
   // pelo próprio nome, sem depender de selo ou de cor.
@@ -1874,7 +1957,10 @@
     analysers: {},
     sharers: [],
     stageSid: null,
-    stageHidden: false,
+    // Começa FECHADO: assistir é opção de quem recebe, não imposição de quem
+    // compartilha. Quem inicia o próprio compartilhamento abre o palco na hora
+    // (ver stopScreen/startScreen), porque quem envia precisa ver o que envia.
+    stageHidden: true,
     timer: null,
     ticker: null,
     ice: null,
@@ -1932,10 +2018,16 @@
         VOICE.micStream = null; VOICE.micTrack = null;
         showToast('O microfone não respondeu a tempo — você entrou só para ouvir. Veja se há um aviso de permissão pendente no navegador.');
       } else {
-        VOICE.micStream = r;
-        VOICE.micTrack = VOICE.micStream.getAudioTracks()[0];
+        VOICE.micStream = r;                      // sempre o CRU, para poder parar o microfone depois
+        const comPortao = montarPortao(VOICE.micStream);
+        // A faixa que vai para os outros é a processada, quando o portão sobe.
+        // Se ele não subir, segue o microfone cru — nunca fica sem áudio.
+        VOICE.micTrack = comPortao ? comPortao.faixa : VOICE.micStream.getAudioTracks()[0];
         VOICE.micTrack.enabled = !VOICE.muted;
-        attachAnalyser(SID, VOICE.micStream);
+        // O indicador de "está falando" mede a faixa que os outros recebem, e
+        // não o microfone cru: assim ele apaga quando o portão fecha, em vez de
+        // acender para um ruído que ninguém está ouvindo.
+        attachAnalyser(SID, comPortao ? comPortao.stream : VOICE.micStream);
       }
     }catch(e){
       VOICE.micStream = null; VOICE.micTrack = null;
@@ -1977,6 +2069,7 @@
 
     stopScreen(true);
     Object.keys(VOICE.peers).forEach(destroyPeer);
+    desmontarPortao();
     if (VOICE.micStream) VOICE.micStream.getTracks().forEach(t => { try{ t.stop(); }catch(e){} });
     VOICE.micStream = null; VOICE.micTrack = null;
     delete VOICE.analysers[SID];
@@ -2588,6 +2681,199 @@
       if (AC.state === 'suspended') AC.resume();
     }catch(e){}
   }
+  // ---------- PORTÃO DE RUÍDO ----------
+  // Cadeia: microfone -> passa-alta -> ganho -> faixa que vai para os outros.
+  // O passa-alta em 90 Hz tira trepidação de mesa e ronco de ar-condicionado,
+  // que o supressor nativo deixa passar. O ganho é o portão em si.
+  //
+  // A medição é feita DEPOIS do passa-alta: medir antes faria um ronco de
+  // 50 Hz manter o portão aberto sem ninguém falar.
+  const PORTAO = {
+    grafo: null,
+    timer: null,
+    aberto: true,
+    ultimaVoz: 0,
+    envelope: 0,          // nível suavizado; ver PORTAO_DECAIMENTO
+    limiar: 0.018,        // RMS; o slider vai de 0 a 0.1
+    estadoNaTela: null,
+  };
+
+  // 350ms: cobre pausa entre palavras sem esticar demais o tempo total até
+  // fechar, que é a soma disto com a descida do envelope.
+  const PORTAO_ESPERA_MS = 350;
+  const PORTAO_HISTERESE = 0.6;   // fecha em 60% do limiar que abre
+
+  // Decidir por quadro solto de RMS não funciona para voz: entre uma vogal e a
+  // consoante seguinte o nível cai muito, e o portão bate no meio da fala — foi
+  // exatamente o picotado da primeira versão. O envelope segue o pico e cai
+  // devagar, então a decisão é sobre a ENERGIA DA FRASE, não sobre 10ms de som.
+  // 0.6 por passo de 40ms: cai a um terço em cerca de 80ms. Começou em 0.82 e
+  // ficou LENTO DEMAIS — a descida sozinha levava 600ms, e somada à espera dava
+  // um segundo de ruído saindo depois de cada frase. O envelope só precisa
+  // atravessar o vale de uma sílaba (uns 70ms); segurar a frase é papel da
+  // espera, não dele.
+  const PORTAO_DECAIMENTO = 0.6;
+
+  function montarPortao(streamCru){
+    if (!PORTAO_RUIDO) return null;
+    try{
+      resumeAudio();
+      // Sem contexto de áudio rodando, o destino de mídia sairia MUDO e ninguém
+      // ouviria a pessoa. Nesse caso não monta nada e o microfone cru segue.
+      if (!AC || AC.state !== 'running') {
+        console.warn('[sala] portão de ruído desligado: contexto de áudio em', AC && AC.state);
+        return null;
+      }
+      const src = AC.createMediaStreamSource(streamCru);
+      const passaAlta = AC.createBiquadFilter();
+      passaAlta.type = 'highpass';
+      passaAlta.frequency.value = 90;
+      const medidor = AC.createAnalyser();
+      medidor.fftSize = 512;
+      const gate = AC.createGain();
+      gate.gain.value = 1;
+      const saida = AC.createMediaStreamDestination();
+
+      src.connect(passaAlta);
+      passaAlta.connect(medidor);
+      passaAlta.connect(gate);
+      gate.connect(saida);
+
+      const faixa = saida.stream.getAudioTracks()[0];
+      if (!faixa) return null;
+
+      PORTAO.grafo = { src, passaAlta, medidor, gate, saida, dados: new Uint8Array(medidor.fftSize) };
+      PORTAO.aberto = true;
+      PORTAO.ultimaVoz = 0;
+      PORTAO.envelope = 0;
+      iniciarLacoDoPortao();
+      atualizarControlePortao();
+      return { stream: saida.stream, faixa };
+    }catch(e){
+      console.warn('[sala] portão de ruído indisponível', e);
+      PORTAO.grafo = null;
+      return null;
+    }
+  }
+
+  function desmontarPortao(){
+    if (PORTAO.timer){ clearInterval(PORTAO.timer); PORTAO.timer = null; }
+    const g = PORTAO.grafo;
+    PORTAO.grafo = null;
+    if (!g) return;
+    try{ g.saida.stream.getTracks().forEach(function(t){ try{ t.stop(); }catch(e){} }); }catch(e){}
+    [g.src, g.passaAlta, g.medidor, g.gate].forEach(function(no){ try{ no.disconnect(); }catch(e){} });
+    PORTAO.estadoNaTela = null;
+  }
+
+  function mandarGanho(valor){
+    const g = PORTAO.grafo;
+    if (!g) return;
+    // setTargetAtTime faz a rampa na thread de áudio: mesmo se este timer
+    // atrasar, a transição termina suave. Ganho em degrau viraria estalo.
+    //
+    // Abrir é rápido (8ms) para não comer o começo da palavra; fechar é lento
+    // (120ms) porque um fecho abrupto é audível como corte, e porque se a
+    // pessoa voltar a falar no meio da descida a subida disfarça.
+    try{ g.gate.gain.setTargetAtTime(valor, AC.currentTime, valor > 0.5 ? 0.008 : 0.12); }
+    catch(e){ try{ g.gate.gain.value = valor; }catch(e2){} }
+  }
+
+  function passoDoPortao(){
+    const g = PORTAO.grafo;
+    if (!g) return;
+
+    // Limiar zero = portão desligado, sempre aberto.
+    if (PORTAO.limiar <= 0){
+      if (!PORTAO.aberto){ PORTAO.aberto = true; mandarGanho(1); }
+      pintarEstadoPortao('desligado');
+      return;
+    }
+
+    // Aba em segundo plano: setInterval é estrangulado para uma vez por minuto, e um
+    // portão congelado FECHADO deixaria a pessoa muda sem ela perceber. Melhor
+    // transmitir ruído que emudecer alguém, então abre e espera voltar.
+    if (document.visibilityState !== 'visible'){
+      if (!PORTAO.aberto){ PORTAO.aberto = true; mandarGanho(1); }
+      pintarEstadoPortao('aberto');
+      return;
+    }
+
+    g.medidor.getByteTimeDomainData(g.dados);
+    let soma = 0;
+    for (let i = 0; i < g.dados.length; i++){ const v = (g.dados[i] - 128) / 128; soma += v * v; }
+    const rms = Math.sqrt(soma / g.dados.length);
+
+    // Envelope: sobe na hora com o pico, desce devagar. É sobre ele que a
+    // decisão é tomada, nunca sobre o quadro cru.
+    PORTAO.envelope = Math.max(rms, PORTAO.envelope * PORTAO_DECAIMENTO);
+    const nivel = PORTAO.envelope;
+
+    const agora = (typeof performance !== 'undefined' && performance.now) ? performance.now() : 0;
+    const limiarFecha = PORTAO.limiar * PORTAO_HISTERESE;
+
+    if (nivel >= PORTAO.limiar){
+      // Acima do limiar cheio: é fala, abre e reinicia a espera.
+      PORTAO.ultimaVoz = agora;
+      if (!PORTAO.aberto){ PORTAO.aberto = true; mandarGanho(1); }
+    } else if (nivel >= limiarFecha){
+      // Faixa de histerese. AQUI ESTAVA O BUG: a versão anterior não fazia
+      // nada neste caso, então o relógio da espera seguia correndo enquanto a
+      // pessoa ainda falava, e o primeiro vale fechava o portão no meio da
+      // palavra. Estando aberto, esta faixa conta como fala.
+      if (PORTAO.aberto) PORTAO.ultimaVoz = agora;
+    } else if (PORTAO.aberto && agora - PORTAO.ultimaVoz > PORTAO_ESPERA_MS){
+      // Abaixo dos dois limiares e a espera venceu: agora sim é silêncio.
+      PORTAO.aberto = false;
+      mandarGanho(0);
+    }
+    pintarEstadoPortao(PORTAO.aberto ? 'aberto' : 'fechado');
+  }
+
+  function pintarEstadoPortao(estado){
+    if (PORTAO.estadoNaTela === estado) return;   // sem reescrever o DOM a 25 Hz
+    PORTAO.estadoNaTela = estado;
+    const el = document.getElementById('portao-estado');
+    if (!el) return;
+    el.textContent = estado;
+    el.classList.toggle('aberto', estado === 'aberto');
+    el.classList.toggle('desligado', estado === 'desligado');
+  }
+
+  function iniciarLacoDoPortao(){
+    if (PORTAO.timer) return;
+    // 40ms: rápido o bastante para não comer sílabas, devagar o bastante para
+    // não pesar. requestAnimationFrame seria pior — para junto com a aba.
+    PORTAO.timer = setInterval(passoDoPortao, 40);
+  }
+
+  function atualizarControlePortao(){
+    const faixa = document.getElementById('portao-limiar');
+    if (faixa) faixa.value = String(Math.round(PORTAO.limiar * 1000));
+  }
+
+  if (PORTAO_RUIDO){
+    document.body.classList.add('portao-on');
+    const faixa = document.getElementById('portao-limiar');
+    if (faixa){
+      faixa.addEventListener('input', function(){
+        // 0..100 no slider -> 0..0.1 de RMS. O indicador de quem está falando
+        // usa 0.025 como referência, então o padrão 18 fica um pouco abaixo.
+        PORTAO.limiar = Number(faixa.value) / 1000;
+        PORTAO.estadoNaTela = null;
+        safeSet('portao-limiar', String(faixa.value), false);
+      });
+    }
+    // Preferência por navegador, como o volume por pessoa.
+    (async function(){
+      const v = await safeGet('portao-limiar', false);
+      if (v !== null && v !== undefined && v !== ''){
+        PORTAO.limiar = Number(v) / 1000;
+        atualizarControlePortao();
+      }
+    })();
+  }
+
   function attachAnalyser(id, stream){
     try{
       resumeAudio();
@@ -2969,9 +3255,17 @@
       const temVideo = !!(vt && vt.readyState === 'live' && !vt.muted);
       if ((e && e.sharing) || temVideo) sharers.push({ sid: p.sid, name: p.name, self: false });
     }
-    const hadNone = VOICE.sharers.length === 0;
     VOICE.sharers = sharers;
-    if (hadNone && sharers.length) VOICE.stageHidden = false;
+    // AQUI ESTAVA O BUG. Antes: `if (hadNone && sharers.length)
+    // VOICE.stageHidden = false;` — a única coisa no arquivo que reabria o
+    // palco, e só na transição de zero para um compartilhamento. Quem fechava
+    // o palco com alguém JÁ compartilhando ficava sem volta: nada mais zerava
+    // a flag, e só sair e entrar na voz resolvia.
+    //
+    // Agora não há abertura automática. Em troca existe o convite logo abaixo,
+    // que é o caminho de volta que faltava. A escolha fica grudada: se você
+    // estava assistindo quando a pessoa parou, o próximo compartilhamento dela
+    // abre sozinho; se você tinha fechado, continua fechado.
 
     const shareBtn = document.getElementById('share-btn');
     // No celular só o ícone: "Compartilhar tela" empurraria o nome do canal
@@ -2985,6 +3279,23 @@
 
     const on = sharers.length > 0 && !VOICE.stageHidden;
     document.body.classList.toggle('stage-on', on);
+
+    // Convite: alguém compartilhando + palco fechado.
+    const convidar = sharers.length > 0 && VOICE.stageHidden;
+    document.body.classList.toggle('convite-on', convidar);
+    if (convidar){
+      // O próprio nome sai do texto: "Você (você) está compartilhando" é
+      // esquisito, e o caso de ter fechado o próprio palco também precisa de
+      // uma frase que faça sentido.
+      const outros = sharers.filter(function(s){ return !s.self; });
+      const texto = outros.length
+        ? (outros.length > 1
+            ? outros.map(function(s){ return s.name; }).join(', ') + ' estão compartilhando a tela'
+            : outros[0].name + ' está compartilhando a tela')
+        : 'Você está compartilhando a tela';
+      const el = document.getElementById('convite-texto');
+      if (el && el.textContent !== texto) el.textContent = texto;
+    }
     if (!on){
       document.body.classList.remove('theater');
       const v = document.getElementById('stage-video');
@@ -3046,6 +3357,10 @@
 
   document.getElementById('stage-hide').addEventListener('click', () => {
     VOICE.stageHidden = true;
+    updateStage();
+  });
+  document.getElementById('convite-btn').addEventListener('click', () => {
+    VOICE.stageHidden = false;
     updateStage();
   });
   document.getElementById('stage-theater').addEventListener('click', () => {
