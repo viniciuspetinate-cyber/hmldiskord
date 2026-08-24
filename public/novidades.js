@@ -22,6 +22,7 @@ window.NOVIDADES_SALA = [
     '<b>Volume por pessoa</b> no canal de voz — e dá para <b>parar de ouvir</b> alguém sem silenciar o resto, sem afetar o que os outros escutam.',
     '<b>Funciona no celular</b> — em tela estreita os canais e a lista de pessoas viram gavetas, e o chat ocupa a tela inteira. Vale nos três ambientes.',
     '<b>Trocar de ambiente sem sair</b> — botão no topo da barra de canais, que leva de volta à tela de escolha com a conta ainda conectada.',
+    '<b>Assistir à tela virou opcional</b> — quando alguém compartilha, aparece um convite (<i>Fulano está compartilhando a tela · Assistir</i>) em vez do vídeo abrir na sua cara. E fechar o palco não é mais definitivo: o convite volta, e dá para reabrir.',
     '<i>Só no Dev:</i> <b>portão de ruído no microfone</b> — fecha o mic quando você não está falando, então teclado, ventilador e conversa ao fundo param de sair. Limiar ajustável na barra da chamada.',
     '<i>Só no Dev:</i> <b>volume do áudio da transmissão de tela</b>, separado do volume das vozes — o som de um jogo ou de um vídeo não abafa mais a conversa.',
     '<b>Apelido em qualquer ambiente</b> — a conta diz quem você é, o apelido diz como você aparece na sala. Em branco, aparece o nome da conta.',

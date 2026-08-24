@@ -386,6 +386,25 @@
     border-bottom:1px solid var(--border); flex:1 1 62%; min-height:0;
   }
   body.stage-on #stage{ display:flex; }
+
+  /* ---------- CONVITE PARA ASSISTIR ---------- */
+  /* Aparece quando alguém está compartilhando e o palco está fechado. Existe
+     por dois motivos: assistir passou a ser opcional (o vídeo não é mais
+     empurrado na cara de ninguém), e quem fecha o palco precisa de um caminho
+     de volta — antes não havia nenhum, e só sair e entrar na voz resolvia. */
+  #convite-tela{
+    display:none; align-items:center; gap:9px; flex-shrink:0;
+    padding:9px 14px; background:#1e3a26; border-bottom:1px solid #2c5a38;
+    font-size:12.5px; color:#8ff0ab;
+  }
+  body.convite-on #convite-tela{ display:flex; }
+  #convite-tela .quem{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #convite-tela button{
+    flex-shrink:0; cursor:pointer; font-family:inherit; font-size:12px; font-weight:700;
+    padding:6px 12px; border-radius:6px; border:1px solid #3ba55d;
+    background:#3ba55d; color:#0f1a12;
+  }
+  #convite-tela button:hover{ filter:brightness(1.08); }
   body.stage-on #messages{ flex:0 0 30%; }
   body.theater #messages, body.theater #input-row{ display:none; }
   body.theater #stage{ flex:1 1 100%; }
@@ -620,6 +639,8 @@
     /* O botão fica: sem a abertura automática, ele é o único caminho para a
        lista de dentro da sala. Só o rótulo encurta, no JS que o cria. */
 
+    body.mobile-ok #convite-tela{ padding:11px 12px; font-size:12px; }
+    body.mobile-ok #convite-tela button{ padding:9px 13px; }
     body.mobile-ok #messages{ padding:12px 12px 6px; }
     body.mobile-ok #input-row{ padding:8px 12px 12px; }
     /* 16px evita o zoom automático do Safari ao focar o campo. */
@@ -749,13 +770,18 @@
           <span class="sbtn" id="stage-theater" title="Esconder o chat e ampliar o vídeo">Teatro</span>
           <span class="sbtn" id="stage-pip" title="Picture-in-picture">PiP</span>
           <span class="sbtn" id="stage-full" title="Tela cheia">Tela cheia</span>
-          <span class="sbtn" id="stage-hide" title="Fechar o palco">✕</span>
+          <span class="sbtn" id="stage-hide" title="Parar de ver — dá para reabrir depois">✕</span>
         </div>
       </div>
       <div id="stage-video-wrap">
         <video id="stage-video" autoplay playsinline></video>
         <div id="stage-status"></div>
       </div>
+    </div>
+
+    <div id="convite-tela">
+      <span class="quem" id="convite-texto"></span>
+      <button id="convite-btn">Assistir</button>
     </div>
 
     <div id="messages"></div>
@@ -1931,7 +1957,10 @@
     analysers: {},
     sharers: [],
     stageSid: null,
-    stageHidden: false,
+    // Começa FECHADO: assistir é opção de quem recebe, não imposição de quem
+    // compartilha. Quem inicia o próprio compartilhamento abre o palco na hora
+    // (ver stopScreen/startScreen), porque quem envia precisa ver o que envia.
+    stageHidden: true,
     timer: null,
     ticker: null,
     ice: null,
@@ -3226,9 +3255,17 @@
       const temVideo = !!(vt && vt.readyState === 'live' && !vt.muted);
       if ((e && e.sharing) || temVideo) sharers.push({ sid: p.sid, name: p.name, self: false });
     }
-    const hadNone = VOICE.sharers.length === 0;
     VOICE.sharers = sharers;
-    if (hadNone && sharers.length) VOICE.stageHidden = false;
+    // AQUI ESTAVA O BUG. Antes: `if (hadNone && sharers.length)
+    // VOICE.stageHidden = false;` — a única coisa no arquivo que reabria o
+    // palco, e só na transição de zero para um compartilhamento. Quem fechava
+    // o palco com alguém JÁ compartilhando ficava sem volta: nada mais zerava
+    // a flag, e só sair e entrar na voz resolvia.
+    //
+    // Agora não há abertura automática. Em troca existe o convite logo abaixo,
+    // que é o caminho de volta que faltava. A escolha fica grudada: se você
+    // estava assistindo quando a pessoa parou, o próximo compartilhamento dela
+    // abre sozinho; se você tinha fechado, continua fechado.
 
     const shareBtn = document.getElementById('share-btn');
     // No celular só o ícone: "Compartilhar tela" empurraria o nome do canal
@@ -3242,6 +3279,23 @@
 
     const on = sharers.length > 0 && !VOICE.stageHidden;
     document.body.classList.toggle('stage-on', on);
+
+    // Convite: alguém compartilhando + palco fechado.
+    const convidar = sharers.length > 0 && VOICE.stageHidden;
+    document.body.classList.toggle('convite-on', convidar);
+    if (convidar){
+      // O próprio nome sai do texto: "Você (você) está compartilhando" é
+      // esquisito, e o caso de ter fechado o próprio palco também precisa de
+      // uma frase que faça sentido.
+      const outros = sharers.filter(function(s){ return !s.self; });
+      const texto = outros.length
+        ? (outros.length > 1
+            ? outros.map(function(s){ return s.name; }).join(', ') + ' estão compartilhando a tela'
+            : outros[0].name + ' está compartilhando a tela')
+        : 'Você está compartilhando a tela';
+      const el = document.getElementById('convite-texto');
+      if (el && el.textContent !== texto) el.textContent = texto;
+    }
     if (!on){
       document.body.classList.remove('theater');
       const v = document.getElementById('stage-video');
@@ -3303,6 +3357,10 @@
 
   document.getElementById('stage-hide').addEventListener('click', () => {
     VOICE.stageHidden = true;
+    updateStage();
+  });
+  document.getElementById('convite-btn').addEventListener('click', () => {
+    VOICE.stageHidden = false;
     updateStage();
   });
   document.getElementById('stage-theater').addEventListener('click', () => {
