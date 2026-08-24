@@ -162,6 +162,83 @@ Abaixo de 600px:
 - Campos de texto em 16px, que é o tamanho abaixo do qual o Safari dá zoom
   automático ao focar.
 
+## Portão de ruído (só no dev)
+
+`PORTAO_RUIDO = SO_DEV`. Fecha o microfone quando a pessoa não está falando, de
+modo que teclado, ventilador e conversa ao fundo param de sair.
+
+A cadeia, montada em `montarPortao()`:
+
+```
+microfone -> passa-alta 90Hz -> ganho (o portão) -> faixa que vai para os outros
+                             \-> medidor (RMS)
+```
+
+Decisões que não são óbvias, e o porquê:
+
+- **Soma ao supressor nativo, não substitui.** As três flags do `getUserMedia`
+  continuam ligadas. Um modelo de rede neural (RNNoise) exigiria DESLIGAR o
+  `noiseSuppression`, porque é treinado em áudio cru e se comporta mal com áudio
+  já processado — um portão de ganho não tem esse problema.
+- **A medição é depois do passa-alta.** Medindo antes, um ronco de 50 Hz
+  manteria o portão aberto sem ninguém falar.
+- **Decide sobre um envelope, não sobre o quadro cru.** `PORTAO_DECAIMENTO`
+  segue o pico e cai a um terço em cerca de 80 ms. Decidir a cada 10 ms de som
+  fazia o portão bater no meio da fala.
+- **Histerese de 0,6, e a faixa conta como fala.** Abre no limiar cheio, fecha
+  em 60% dele — e **estando aberto, a faixa entre os dois renova a espera**.
+  Faltava isto na primeira versão: o relógio seguia correndo enquanto a pessoa
+  ainda falava baixo, e o primeiro vale cortava a frase. Era a causa do
+  picotado relatado em uso real.
+- **Espera de 350 ms antes de fechar.** Cobre pausa entre palavras. O tempo
+  total até fechar é esta espera mais a descida do envelope, uns 500 ms — por
+  isso o decaimento não pode ser lento (começou em 0,82, dava 1 segundo).
+
+  Simulado com uma frase que perde força, dá uma consoante surda e retoma: a
+  lógica antiga cortava 2 quadros no meio da fala e trocava de estado 3 vezes;
+  a nova corta 0 e troca 1. Ambas fecham no silêncio.
+- **Rampa por `setTargetAtTime`.** A transição acontece na thread de áudio, então
+  um atraso no timer não vira estalo.
+- **Aba em segundo plano abre o portão.** `setInterval` é estrangulado para uma
+  vez por minuto quando a aba não está visível, e um portão congelado FECHADO
+  deixaria a pessoa muda sem ela perceber. Melhor transmitir ruído que emudecer
+  alguém.
+- **Sem contexto de áudio, não monta.** Se o `AudioContext` não estiver
+  `running`, o destino de mídia sairia mudo. Nesse caso a faixa crua do
+  microfone segue direto, e o console avisa.
+
+O controle mora **fora** da `#call-bar`, que é reescrita por `innerHTML` a cada
+ciclo de presença — um slider ali dentro seria destruído no meio do arraste. O
+limiar é guardado por navegador; zero desliga o portão.
+
+O indicador de "está falando" mede a faixa **processada**, não o microfone cru:
+assim ele apaga quando o portão fecha, em vez de acender para um ruído que
+ninguém está ouvindo.
+
+## Assistir à tela é opcional
+
+Quando alguém compartilha, o palco **não** abre sozinho. Aparece uma faixa
+verde acima do chat — "Fulano está compartilhando a tela · Assistir" — e o
+vídeo só entra se a pessoa pedir.
+
+Isso conserta um bug junto. A única coisa no arquivo que reabria o palco era:
+
+```js
+if (hadNone && sharers.length) VOICE.stageHidden = false;
+```
+
+Só a transição de zero para um compartilhamento. Quem fechava o palco com
+alguém JÁ compartilhando ficava sem volta — nada mais zerava a flag, e só sair
+e entrar no canal de voz resolvia. O convite é o caminho de volta que faltava.
+
+A escolha fica grudada: se você estava assistindo quando a pessoa parou, o
+próximo compartilhamento dela abre sozinho; se você tinha fechado, continua
+fechado. Quem inicia o próprio compartilhamento abre o palco na hora, porque
+quem envia precisa ver o que envia.
+
+Para voltar a abrir na cara de todos, é `stageHidden: false` no estado inicial
+do `VOICE` — mas aí o convite deixa de aparecer no primeiro compartilhamento.
+
 ## Trocar de ambiente sem sair
 
 Um botão `⇄ Trocar de ambiente` no topo da barra de canais, logo abaixo do nome
