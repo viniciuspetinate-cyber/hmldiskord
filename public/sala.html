@@ -8,7 +8,7 @@
      todo mundo depois de publicar. O cabeçalho HTTP da Vercel manda mais que
      isto, mas os dois apontam para o mesmo lado. -->
 <meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
-<!-- SALA-VERSAO: v4 · 2026-08-24 — porta única, celular, portão de ruído -->
+<!-- SALA-VERSAO: v5 · 2026-08-24 — dois ambientes, portão de ruído em produção -->
 <title>Sala</title>
 <style>
   :root{
@@ -142,9 +142,6 @@
      laranja = homologação, roxo = desenvolvimento, vermelho = qualquer outro. */
   body.ambiente-dev{
     --amb:#ed4245; --amb-fundo:#4a2430; --amb-texto:#ffb4b4; --amb-borda:#6b3340;
-  }
-  body.amb-hmlsala{
-    --amb:#f5a524; --amb-fundo:#4a3618; --amb-texto:#ffd79a; --amb-borda:#6b4f22;
   }
   body.amb-devsala{
     --amb:#8b5cf6; --amb-fundo:#332a4d; --amb-texto:#d4c2ff; --amb-borda:#4d3f73;
@@ -829,7 +826,7 @@
   // escrito aqui, o arquivo vai para o lugar certo esteja onde estiver.
   //
   //   "producao"  -> a sala de verdade, sem prefixo
-  //   "hmlsala"   -> homologação
+  //   (homologação foi removida; ver README)
   //   "devsala"   -> desenvolvimento
   //   ""          -> (não recomendado) deduz pelo nome do arquivo
   const ESPACO_FORCADO = "producao";
@@ -856,18 +853,22 @@
   // carrega a chave publicável do Supabase, então quem lê o código-fonte
   // alcança a tabela sem abrir esta página. Fechar isso de verdade exige
   // revogar o acesso anônimo no Supabase e rotear o banco por um servidor.
-  // "./" e não "index.html": o Pages serve as salas em /sala, /hmlsala e
-  // /devsala, sem extensão, e "index.html" viraria /index.html — um endereço
+  // "./" e não "index.html": o Pages serve as salas em /sala e /devsala, sem
+  // extensão, e "index.html" viraria /index.html — um endereço
   // que depende do Pages redirecionar para "/". Com "./" a navegação vai direto
   // para a raiz, que é onde o index é servido, seja o endereço /devsala ou
   // /devsala.html.
   const PORTA = './';
-  const ESPACOS_SESSAO = ['', 'hmlsala:', 'devsala:'];
+  const ESPACOS_SESSAO = ['', 'devsala:'];
+  // Homologação foi removida. O prefixo continua na limpeza para que a chave de
+  // sessão de quem usou o hmlsala saia do navegador em vez de ficar lá para
+  // sempre. Nunca é LIDO — só apagado.
+  const ESPACOS_APOSENTADOS = ['hmlsala:'];
 
   function apagarSessaoDeTodos(){
     // Sair de um ambiente sai de todos: a sessão é uma só, gravada nos três.
     // Limpar só o daqui deixaria o index achando que ainda há login válido.
-    for (const p of ESPACOS_SESSAO){
+    for (const p of ESPACOS_SESSAO.concat(ESPACOS_APOSENTADOS)){
       try{ localStorage.removeItem('local:' + p + 'sessao'); }catch(e){}
       try{ localStorage.removeItem('local:' + p + 'nickname'); }catch(e){}
     }
@@ -1062,7 +1063,7 @@
 
   // Marcador de versão: serve para confirmar que o site publicado está mesmo
   // servindo este arquivo, e não uma cópia antiga em cache/CDN.
-  const SALA_VERSAO = 'v4 · 2026-08-24';
+  const SALA_VERSAO = 'v5 · 2026-08-24';
 
   // ---------- PONTE COM O PRIMEIRO BLOCO <script> ----------
   // Estas duas moram no bloco de cima, junto do guard de entrada. Blocos
@@ -1072,7 +1073,7 @@
   const PONTE_PORTA = window.__SALA_PORTA || {};
   // Mesma lista do bloco de cima. Repetida de propósito: o plano B tem que
   // funcionar justamente quando a ponte não veio.
-  const ESPACOS_SESSAO_LOCAL = ['', 'hmlsala:', 'devsala:'];
+  const ESPACOS_SESSAO_LOCAL = ['', 'devsala:', 'hmlsala:'];   // o último é só para limpar
 
   const apagarSessaoDeTodos = PONTE_PORTA.apagarSessao || function(){
     for (const p of ESPACOS_SESSAO_LOCAL){
@@ -1127,9 +1128,13 @@
   // ao Worker — é só nome de exibição, escolhido no navegador.
   const MODO_CONTA = MODO_LOGIN;
 
-  // Ajustes exclusivos do ambiente de desenvolvimento. Hoje sobrou um só: o
-  // volume do áudio da transmissão de tela, logo abaixo. Fica no mesmo arquivo
-  // para os três continuarem idênticos — só este ambiente liga.
+  // Gancho para o próximo recurso a ser testado só no dev. NESTE MOMENTO NÃO
+  // TEM CONSUMIDOR: tudo o que nasceu no dev foi aprovado e promovido, então
+  // produção e dev rodam com as mesmas funções ligadas — a diferença entre eles
+  // é o espaço de dados e a cor, nada mais.
+  //
+  // O jeito de usar: `const RECURSO_NOVO = SO_DEV;` e prender o recurso a essa
+  // constante. Os dois arquivos seguem idênticos, e promover é trocar por true.
   const SO_DEV = /^devsala/.test(window.__SALA_ARQUIVO || '');
 
   // Volume e silêncio por pessoa no canal de voz. Nasceu no dev, foi testado
@@ -1143,33 +1148,27 @@
   const ESTREITO = () => window.matchMedia('(max-width: 600px)').matches;
 
   // Volume do áudio da transmissão de tela, independente do volume das vozes.
-  // Está só no dev enquanto é testado; para valer nos três, troque por true.
-  const VOLUME_TELA = SO_DEV;
+  // Testado no dev e aprovado; vale nos dois ambientes.
+  const VOLUME_TELA = true;
 
   // Assistir à tela compartilhada é OPCIONAL: o palco não abre sozinho, e em
-  // vez dele aparece um convite. Só no dev enquanto é testado; para valer nos
-  // três, troque por true.
-  //
-  // ATENÇÃO À DIFERENÇA. Isto é MUDANÇA DE COMPORTAMENTO, e por isso está preso
-  // ao ambiente. A CORREÇÃO do bug — fechar o palco deixou de ser definitivo,
-  // porque o convite reabre — vale nos três, sem flag. Produção e homologação
-  // seguem abrindo o palco sozinhas como sempre, só que agora dá para voltar.
-  const ASSISTIR_OPCIONAL = SO_DEV;
+  // vez dele aparece um convite. Testado no dev e aprovado; vale nos dois
+  // ambientes. Para voltar a abrir na cara de todos, ponha false.
+  const ASSISTIR_OPCIONAL = true;
 
   // Portão de ruído no microfone: fecha quando você não está falando, para
-  // teclado, ventilador e conversa ao fundo não saírem. Só no dev enquanto é
-  // testado; para valer nos três, troque por true.
+  // teclado, ventilador e conversa ao fundo não saírem. Testado no dev e
+  // aprovado; vale nos dois ambientes. Para desligar, ponha false.
   //
   // NÃO substitui o noiseSuppression nativo do navegador — soma a ele. Um
   // modelo de rede neural (RNNoise e afins) exigiria DESLIGAR o nativo, porque
   // é treinado em áudio cru; um portão de ganho não tem esse problema.
-  const PORTAO_RUIDO = SO_DEV;
+  const PORTAO_RUIDO = true;
 
   // Nome fixo por ambiente, igual nos três: quem abre a janela sabe onde está
   // pelo próprio nome, sem depender de selo ou de cor.
   const NOME_POR_AMBIENTE = {
     producao: 'AIQCALL - PROD',
-    hmlsala:  'AIQCALL - HML',
     devsala:  'AIQCALL - DEV',
   };
   const NOME_FIXO = NOME_POR_AMBIENTE[window.__SALA_ESPACO]
@@ -1181,7 +1180,7 @@
     { id: 'voz-sala-2', name: 'Sala 2' },
   ];
 
-  // "hmlsala" -> "hml", "devsala" -> "dev"; usado no selo e na etiqueta lateral
+  // "devsala" -> "dev"; usado no selo e na etiqueta lateral do ambiente
   const AMB = (window.__SALA_ESPACO || '').replace(/sala$/, '') || 'teste';
 
   if (EH_DEV){
