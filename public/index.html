@@ -10,7 +10,7 @@
     --fundo:#141219; --cartao:#1f1c27; --borda:#332f3d;
     --texto:#f3f1f7; --apagado:#8d879c; --entrada:#191722;
     --laranja:#f7931e; --vermelho:#ed4245;
-    --prod:#3ba55d; --hml:#f5a524; --dev:#8b5cf6;
+    --prod:#3ba55d; --dev:#8b5cf6;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   body{
@@ -113,7 +113,6 @@
   a.amb .gente.vivo .ponto{background:var(--cor); animation:pulsa 2s ease-in-out infinite}
   @keyframes pulsa{0%,100%{opacity:1}50%{opacity:.35}}
   .prod{--cor:var(--prod)}
-  .hml {--cor:var(--hml)}
   .dev {--cor:var(--dev)}
   .pe{text-align:center;font-size:10.5px;color:var(--apagado);margin-top:20px;
       font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;opacity:.65}
@@ -277,16 +276,6 @@
         <span class="tag">prod</span>
       </a>
 
-      <a class="amb hml" href="hmlsala">
-        <span class="bolinha"></span>
-        <span class="txt">
-          <span class="nome">Homologação</span>
-          <span class="obs">Para testar antes de publicar. Dados separados da produção.</span>
-        </span>
-        <span class="gente" data-amb="hmlsala"><span class="ponto"></span><span class="n">–</span><span class="rot">Online</span></span>
-        <span class="tag">hml</span>
-      </a>
-
       <a class="amb dev" href="devsala">
         <span class="bolinha"></span>
         <span class="txt">
@@ -298,7 +287,7 @@
       </a>
     </div>
 
-    <div class="pe">verde produção &nbsp;·&nbsp; laranja homologação &nbsp;·&nbsp; roxo desenvolvimento</div>
+    <div class="pe">verde produção &nbsp;·&nbsp; roxo desenvolvimento</div>
   </div>
 
 <!-- Mesma lista de melhorias que as três salas usam. Se o arquivo faltar, o
@@ -322,9 +311,13 @@
   // prefixo — foi o primeiro a existir e as chaves ficaram sem namespace.
   const AMBIENTES = [
     { id: 'producao', prefixo: '' },
-    { id: 'hmlsala',  prefixo: 'hmlsala:' },
     { id: 'devsala',  prefixo: 'devsala:' }
   ];
+
+  // Homologação foi removida. O prefixo fica aqui só para a limpeza: quem usou
+  // o hmlsala tem uma chave de sessão no navegador que precisa sair ao sair da
+  // conta. Nunca é lido nem contado.
+  const ESPACOS_APOSENTADOS = ['hmlsala:'];
 
   // A sala grava a sessão em localStorage, com o prefixo do próprio espaço.
   // Entrar aqui grava nos três: assim a pessoa passa pelo login UMA vez e
@@ -376,11 +369,12 @@
   }
 
   function apagarSessao(){
-    for (const a of AMBIENTES){
-      try{ localStorage.removeItem('local:' + a.prefixo + 'sessao'); }catch(e){}
+    const prefixos = AMBIENTES.map(function(a){ return a.prefixo; }).concat(ESPACOS_APOSENTADOS);
+    for (const p of prefixos){
+      try{ localStorage.removeItem('local:' + p + 'sessao'); }catch(e){}
       // Apelido guardado à parte pela versão antiga da sala: sai junto, senão
       // a próxima pessoa a usar a máquina entraria com o nome da anterior.
-      try{ localStorage.removeItem('local:' + a.prefixo + 'nickname'); }catch(e){}
+      try{ localStorage.removeItem('local:' + p + 'nickname'); }catch(e){}
     }
   }
 
@@ -463,7 +457,7 @@
       const cab = r.headers.get('Date');
       const agora = cab ? new Date(cab).getTime() : Date.now();
 
-      const contas = { producao: 0, hmlsala: 0, devsala: 0 };
+      const contas = { producao: 0, devsala: 0 };
       for (const linha of linhas){
         const chave = String(linha.key || '');
         const ts = Number(linha.value) || 0;

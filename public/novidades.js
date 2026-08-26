@@ -1,7 +1,7 @@
-// Lista de melhorias, compartilhada pela página inicial e pelas três salas.
+// Lista de melhorias, compartilhada pela página inicial e pelas duas salas.
 //
-// POR QUE UM ARQUIVO SÓ: o index e os sala/hmlsala/devsala mostram a MESMA
-// lista. Com uma cópia em cada, a primeira edição já deixaria os quatro
+// POR QUE UM ARQUIVO SÓ: o index, o sala e o devsala mostram a MESMA
+// lista. Com uma cópia em cada, a primeira edição já deixaria os três
 // dizendo coisas diferentes. Editar aqui atualiza todos.
 //
 // Para atualizar, mexa só nisto: o primeiro grupo é o mais recente.
@@ -10,17 +10,18 @@
 // Quem consome: htmlNovidades() nas salas, e o modal do index.html.
 
 window.NOVIDADES_SALA = [
-  { titulo: 'Novidades desta versão (v4)', itens: [
-    '<b>Entrada só por conta</b> — cada pessoa tem usuário e senha próprios, nos três ambientes. A senha compartilhada da sala deixou de existir.',
+  { titulo: 'Novidades desta versão (v5)', itens: [
+    '<b>Entrada só por conta</b> — cada pessoa tem usuário e senha próprios. A senha compartilhada da sala deixou de existir.',
     '<b>Sem conta, ninguém entra</b> — não há mais atalho embutido na página caso o serviço de login fique fora do ar.',
-    '<b>Uma porta só</b> — o login agora é na página inicial e vale para os três ambientes de uma vez. Abrir uma sala direto no endereço leva de volta para lá.',
+    '<b>Homologação saiu</b> — sobraram dois ambientes: produção e desenvolvimento. Produção passou a rodar exatamente as mesmas funções do dev; a diferença entre eles é só o espaço de dados e a cor.',
+    '<b>Uma porta só</b> — o login agora é na página inicial e vale para os dois ambientes de uma vez. Abrir uma sala direto no endereço leva de volta para lá.',
     '<b>Entrada em dois passos</b> — primeiro a conta, depois a pergunta <i>como você prefere ser chamado?</i>. Só então aparecem os ambientes.',
     '<b>Quem está onde</b> — a página inicial mostra quantas pessoas estão em cada ambiente (<i>2 Online</i>) antes de você escolher.',
-    '<b>Cada ambiente tem nome e cor próprios</b> — AIQCALL PROD, HML e DEV. O nome deixou de ser editável, para ninguém confundir onde está.',
+    '<b>Cada ambiente tem nome e cor próprios</b> — AIQCALL PROD e DEV. O nome deixou de ser editável, para ninguém confundir onde está.',
     '<b>Um segundo canal de voz</b> (Sala 2). Criar e apagar canais saiu de todos os ambientes.',
     '<b>Ícone próprio</b> na aba do navegador e na página inicial.',
     '<b>Volume por pessoa</b> no canal de voz — e dá para <b>parar de ouvir</b> alguém sem silenciar o resto, sem afetar o que os outros escutam.',
-    '<b>Funciona no celular</b> — em tela estreita os canais e a lista de pessoas viram gavetas, e o chat ocupa a tela inteira. Vale nos três ambientes.',
+    '<b>Funciona no celular</b> — em tela estreita os canais e a lista de pessoas viram gavetas, e o chat ocupa a tela inteira.',
     '<b>Trocar de ambiente sem sair</b> — botão no topo da barra de canais, que leva de volta à tela de escolha com a conta ainda conectada.',
     '<b>Corrigido: fechar a tela compartilhada não é mais definitivo</b> — antes, quem fechava o palco com alguém já compartilhando não conseguia reabrir sem sair e entrar no canal de voz. Agora aparece um convite (<i>Fulano está compartilhando a tela · Assistir</i>) que reabre.',
     '<b>Apelido em qualquer ambiente</b> — a conta diz quem você é, o apelido diz como você aparece na sala. Em branco, aparece o nome da conta.',
@@ -29,9 +30,9 @@ window.NOVIDADES_SALA = [
     '<b>A lista não abre mais sozinha</b> — antes pulava na frente de quem entrava depois de uma publicação. Agora é consulta voluntária, no botão ✨ Novidades.',
     '<b>Corrigido: o botão sair não saía</b> — ele chamava funções que não existiam no escopo dele, e o erro morria calado. Valia em todos os ambientes, e também travava a saída quando a sessão vencia.',
     '<b>Correção publicada agora chega na hora</b> — a regra de cache não cobria os endereços que o site usa de verdade (<i>/sala</i>, sem extensão), então quem já tinha aberto a página podia continuar com a versão antiga.',
-    '<i>Só no Dev:</i> <b>assistir à tela é opcional</b> — o palco não abre sozinho; aparece o convite e o vídeo só entra se você pedir. Nos outros ambientes ele continua abrindo como sempre.',
-    '<i>Só no Dev:</i> <b>portão de ruído no microfone</b> — fecha o mic quando você não está falando, então teclado, ventilador e conversa ao fundo param de sair. Limiar ajustável na barra da chamada.',
-    '<i>Só no Dev:</i> <b>volume do áudio da transmissão de tela</b>, separado do volume das vozes — o som de um jogo ou de um vídeo não abafa mais a conversa.',
+    '<b>Assistir à tela é opcional</b> — o palco não abre mais sozinho: aparece o convite e o vídeo só entra se você pedir.',
+    '<b>Portão de ruído no microfone</b> — fecha o mic quando você não está falando, então teclado, ventilador e conversa ao fundo param de sair. Limiar ajustável na barra da chamada.',
+    '<b>Volume do áudio da transmissão de tela</b>, separado do volume das vozes — o som de um jogo ou de um vídeo não abafa mais a conversa.',
   ]},
   { titulo: 'Versão anterior (v2)', itens: [
     '<b>A sala ficou 20× mais leve</b> — antes cada pessoa baixava o histórico do chat inteiro a cada 2,5s, mesmo sem mensagem nova.',
