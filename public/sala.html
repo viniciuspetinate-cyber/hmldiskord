@@ -68,7 +68,8 @@
 
     <div id="call-bar"></div>
     <button id="quality-indicator">Diagnóstico da chamada</button>
-    <!-- Portão de ruído. Só aparece em chamada, e só onde PORTAO_RUIDO liga. -->
+    <button id="audio-settings-toggle" aria-expanded="false" aria-controls="portao">⚙ Ajustar microfone</button>
+    <!-- Configuração de áudio: começa recolhida e abre somente pelo botão acima. -->
     <div id="portao">
       <div class="linha">
         <span class="rot">Portão de ruído</span>
@@ -80,8 +81,6 @@
         <span class="sinal">−</span><span class="nome">Isolamento</span><span class="sinal">+</span>
       </div>
       <div class="dica">Use o menor valor que feche no silêncio. Zero desliga o portão.</div>
-      <label class="audio-setting" for="mic-mode">Redução de ruído</label>
-      <select id="mic-mode"><option value="native">Nativa · mais leve</option><option value="neural">RNNoise · avançada</option></select>
       <label class="audio-setting" for="mic-device">Microfone</label>
       <select id="mic-device"><option value="">Padrão do sistema</option></select>
       <label class="audio-check"><input id="mic-agc" type="checkbox" checked> Volume automático</label>

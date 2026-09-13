@@ -11,7 +11,7 @@
 
 window.NOVIDADES_SALA = [
   { titulo: 'Novidades desta versão (v6)', itens: [
-    '<b>Redução de ruído avançada</b> — RNNoise opcional, processado no seu aparelho. Selecione o microfone, ajuste o volume automático e calibre o isolamento em três segundos de silêncio.',
+    '<b>Redução de ruído avançada</b> — RNNoise ativo por padrão e processado no seu aparelho. Os ajustes do microfone ficam recolhidos até você abrir o painel.',
     '<b>Portão de ruído mais estável</b> — o processamento de áudio controla a abertura e o fechamento, sem depender do timer da página.',
     '<b>Tela enviada para quem assiste</b> — entre pessoas com a versão atual, fechar a tela interrompe o envio daquele vídeo para você e mantém a chamada de voz.',
     '<b>Três perfis de transmissão</b> — Texto, Movimento e Econômico. A qualidade reduz gradualmente quando o navegador detecta falta persistente de banda ou processamento.',
