@@ -10,9 +10,19 @@
 // Quem consome: htmlNovidades() nas salas, e o modal do index.html.
 
 window.NOVIDADES_SALA = [
-  { titulo: 'Novidades desta versão (v5)', itens: [
+  { titulo: 'Novidades desta versão (v6)', itens: [
+    '<b>Redução de ruído avançada</b> — RNNoise opcional, processado no seu aparelho. Selecione o microfone, ajuste o volume automático e calibre o isolamento em três segundos de silêncio.',
+    '<b>Portão de ruído mais estável</b> — o processamento de áudio controla a abertura e o fechamento, sem depender do timer da página.',
+    '<b>Tela enviada para quem assiste</b> — entre pessoas com a versão atual, fechar a tela interrompe o envio daquele vídeo para você e mantém a chamada de voz.',
+    '<b>Três perfis de transmissão</b> — Texto, Movimento e Econômico. A qualidade reduz gradualmente quando o navegador detecta falta persistente de banda ou processamento.',
+    '<b>Áudio do sistema opcional</b> — a tela inteira começa sem som do sistema para reduzir o risco de eco; você pode incluí-lo no menu.',
+    '<b>Diagnóstico da chamada</b> — consulte dados de rede, áudio e vídeo disponíveis no seu navegador.',
+    '<b>Chat e conexão corrigidos</b> — envios simultâneos são gravados separadamente, mensagens novas aparecem após o limite de 200 e os candidatos de conexão são entregues conforme ficam prontos.',
+    '<b>Cancelar realmente cancela</b> — se o microfone for liberado após você sair, a captura é encerrada. As gavetas também se ajustam ao mudar para o tamanho de celular.'
+  ] },
+  { titulo: 'Histórico de alterações (v5)', itens: [
     '<b>Entrada só por conta</b> — cada pessoa tem usuário e senha próprios. A senha compartilhada da sala deixou de existir.',
-    '<b>Sem conta, ninguém entra</b> — não há mais atalho embutido na página caso o serviço de login fique fora do ar.',
+    '<b>Entrada pela página de login</b> — a interface exige sessão antes de abrir a sala. As permissões de dados dependem da configuração do servidor.',
     '<b>Homologação saiu</b> — sobraram dois ambientes: produção e desenvolvimento. Produção passou a rodar exatamente as mesmas funções do dev; a diferença entre eles é só o espaço de dados e a cor.',
     '<b>Uma porta só</b> — o login agora é na página inicial e vale para os dois ambientes de uma vez. Abrir uma sala direto no endereço leva de volta para lá.',
     '<b>Entrada em dois passos</b> — primeiro a conta, depois a pergunta <i>como você prefere ser chamado?</i>. Só então aparecem os ambientes.',
