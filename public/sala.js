@@ -2732,11 +2732,18 @@
   document.getElementById('mic-retry').addEventListener('click', trocarMicrofone);
   const audioToggle = document.getElementById('audio-settings-toggle');
   function mostrarPainelAudio(aberto){
-    document.body.classList.toggle('mic-settings-open', aberto);
-    audioToggle.setAttribute('aria-expanded', String(aberto));
-    audioToggle.textContent = aberto ? '⚙ Ocultar ajustes do microfone' : '⚙ Ajustar microfone';
+    const abertoBool = !!aberto;
+    document.body.classList.toggle('mic-settings-open', abertoBool);
+    audioToggle.setAttribute('aria-expanded', String(abertoBool));
+    audioToggle.textContent = abertoBool ? '⚙ Ocultar ajustes do microfone' : '⚙ Ajustar microfone';
   }
-  audioToggle.addEventListener('click', () => mostrarPainelAudio(!document.body.classList.contains('mic-settings-open')));
+  // O estado vem do próprio botão. Isso evita que um clique duplicado ou uma
+  // atualização visual intermediária deixe o painel preso aberto.
+  audioToggle.addEventListener('click', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    mostrarPainelAudio(audioToggle.getAttribute('aria-expanded') !== 'true');
+  });
   document.getElementById('mic-calibrate').addEventListener('click', e => {
     if (!PORTAO.grafo || PORTAO.grafo.mode === 'fallback') return;
     e.target.disabled=true; e.target.textContent='Fique 3 segundos em silêncio…';
@@ -2768,7 +2775,13 @@
       return;
     }
     if (MODO_LOGIN){
-      const raw = await safeGet('sessao', false);
+      // O login da porta grava a sessão no localStorage. O armazenamento remoto
+      // da sala guarda dados de conversa e não deve ser a fonte da identidade;
+      // usar safeGet aqui fazia a pessoa passar pela tranca e, em seguida,
+      // receber a tela de login/apelido novamente.
+      let raw = null;
+      try{ raw = localStorage.getItem('local:' + (window.__SALA_NS || '') + 'sessao'); }catch(e){}
+      if (!raw){ raw = await safeGet('sessao', false); }
       let s = null;
       try{ s = raw ? JSON.parse(raw) : null; }catch(e){ s = null; }
       if (s && s.usuario && s.exp && s.exp > Math.floor(Date.now()/1000)){
