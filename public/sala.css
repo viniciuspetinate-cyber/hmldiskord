@@ -31,6 +31,12 @@
   #mic-active{ display:block; font-size:10px; color:var(--text-low); }
   #quality-indicator{ display:none; width:100%; padding:8px; border:0; border-top:1px solid var(--border); background:#182119; color:var(--text-mid); cursor:pointer; font-size:11px; }
   body.in-call #quality-indicator{ display:block; }
+  #audio-settings-toggle{
+    display:none; width:100%; padding:8px 10px; border:0; border-top:1px solid var(--border);
+    background:#182119; color:var(--text-mid); cursor:pointer; font:inherit; font-size:11px;
+  }
+  body.in-call.portao-on #audio-settings-toggle{ display:block; }
+  #audio-settings-toggle:hover, #audio-settings-toggle[aria-expanded="true"]{ background:#203024; color:#8ff0ab; }
   #sidebar{ overflow-y:auto; }
   #scroll-area{ min-height:100px; }
   #screen-profile-wrap{ max-width:205px; }
@@ -331,7 +337,7 @@
      cada ciclo de presença, e um slider ali dentro seria destruído no meio do
      arraste. Aqui o nó é criado uma vez e nunca redesenhado. */
   #portao{ display:none; padding:8px 10px 10px; background:#182119; border-top:1px solid var(--border); }
-  body.in-call.portao-on #portao{ display:block; }
+  body.in-call.portao-on.mic-settings-open #portao{ display:block; }
   #portao .linha{ display:flex; align-items:center; gap:6px; margin-bottom:6px; }
   #portao .rot{ font-size:11px; color:var(--text-low); flex:1; }
   #portao .estado{

@@ -11,12 +11,13 @@
     fluido:{label:'Movimento · 720p / 30 fps',width:1280,height:720,fps:30,bitrate:2000000,hint:'motion',degradation:'maintain-framerate'},
     leve:{label:'Econômico · 540p / 15 fps',width:960,height:540,fps:15,bitrate:900000,hint:'motion',degradation:'maintain-framerate'}
   };
-  const MIC_PREFS = {device:'',mode:'native',agc:true};
+  // RNNoise é o padrão fixo. A interface não oferece troca de filtro; se o
+  // módulo não puder iniciar, o próprio mecanismo recupera com o filtro nativo.
+  const MIC_PREFS = {device:'',mode:'neural',agc:true};
   try{
     const saved = JSON.parse(localStorage.getItem('local:' + (window.__SALA_NS || '') + 'mic-preferences'));
     if (saved){
       MIC_PREFS.device = typeof saved.device === 'string' ? saved.device : '';
-      MIC_PREFS.mode = saved.mode === 'neural' ? 'neural' : 'native';
       MIC_PREFS.agc = saved.agc !== false;
     }
   }catch(_){}
@@ -78,7 +79,7 @@
     MIC_CHANGING = true;
     const generation = VOICE.generation;
     let raw, graph;
-    const controls = ['mic-device','mic-mode','mic-agc','mic-retry'];
+    const controls = ['mic-device','mic-agc','mic-retry'];
     controls.forEach(id => { document.getElementById(id).disabled = true; });
     try{
       raw = await adquirirMicrofone(); graph = await montarPortao(raw);
@@ -1337,7 +1338,7 @@
     VOICE.joined = false; VOICE.conhecidos = null;
     stopScreen(true); Object.keys(VOICE.peers).forEach(destroyPeer); desmontarPortao();
     pararStream(VOICE.micStream); VOICE.micStream = null; VOICE.micTrack = null;
-    detachAnalyser(SID); stopSpeakLoop(); document.body.classList.remove('in-call');
+    detachAnalyser(SID); stopSpeakLoop(); document.body.classList.remove('in-call'); mostrarPainelAudio(false);
     VOICE._sig = null; renderVoice(); updateStage();
     if (!keepTimer) restartVoiceTimer();
     if (chan) await safeDelete('vp:' + chan + ':' + SID, true);
@@ -2037,7 +2038,6 @@
         }
         if (data.type === 'error'){
           MIC_PREFS.mode = 'native';
-          document.getElementById('mic-mode').value = 'native';
           showToast('O filtro avançado falhou. Recuperando o microfone com o filtro nativo.');
           trocarMicrofone();
         }
@@ -2726,12 +2726,17 @@
   if (RECURSOS_NOVOS) montarNovidades();
 
   // Persistent controls live outside the frequently re-rendered call bar.
-  document.getElementById('mic-mode').value = MIC_PREFS.mode;
   document.getElementById('mic-agc').checked = MIC_PREFS.agc;
   document.getElementById('mic-device').addEventListener('change', e => { MIC_PREFS.device=e.target.value; trocarMicrofone(); });
-  document.getElementById('mic-mode').addEventListener('change', e => { MIC_PREFS.mode=e.target.value; trocarMicrofone(); });
   document.getElementById('mic-agc').addEventListener('change', e => { MIC_PREFS.agc=e.target.checked; trocarMicrofone(); });
   document.getElementById('mic-retry').addEventListener('click', trocarMicrofone);
+  const audioToggle = document.getElementById('audio-settings-toggle');
+  function mostrarPainelAudio(aberto){
+    document.body.classList.toggle('mic-settings-open', aberto);
+    audioToggle.setAttribute('aria-expanded', String(aberto));
+    audioToggle.textContent = aberto ? '⚙ Ocultar ajustes do microfone' : '⚙ Ajustar microfone';
+  }
+  audioToggle.addEventListener('click', () => mostrarPainelAudio(!document.body.classList.contains('mic-settings-open')));
   document.getElementById('mic-calibrate').addEventListener('click', e => {
     if (!PORTAO.grafo || PORTAO.grafo.mode === 'fallback') return;
     e.target.disabled=true; e.target.textContent='Fique 3 segundos em silêncio…';
