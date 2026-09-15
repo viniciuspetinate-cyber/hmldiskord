@@ -198,7 +198,7 @@
     VOICE._sig = null; renderVoice(); updateStage(); voiceTick();
     if (peloSFU) showToast('Tela conectada ao servidor SFU. Cada transmissão sai uma única vez do seu computador.');
     else if (SFU_TELA) showToast('SFU indisponível. A tela continua pelo modo direto.');
-    if (surface === 'monitor' && VOICE.screenAudioTrack) showToast('Áudio do sistema incluído. Ele pode devolver o som da chamada; prefira uma aba para compartilhar vídeos.');
+    if (surface === 'monitor' && VOICE.screenAudioTrack) showToast('Áudio do computador com filtro da chamada ativado pelo navegador.');
     else if (!VOICE.screenAudioTrack) showToast('Transmitindo sem áudio da origem.');
   }
 
@@ -2140,9 +2140,26 @@
   // ---------- compartilhar tela ----------
   // modo 'aba'  -> só uma aba do navegador, com o áudio SÓ dela. Não captura o
   //                som da chamada, então não dá eco.
-  // modo 'tela' -> tela inteira. O áudio é o do sistema todo, o que inclui a voz
-  //                das outras pessoas saindo do seu alto-falante — e volta para
-  //                elas como eco. Não há como subtrair isso depois.
+  // System audio is admitted only when the browser confirms restrictOwnAudio.
+  // The filter excludes this tab's output, including the voices of other users.
+  function suportaIsolamentoTela(){
+    try{ return navigator.mediaDevices.getSupportedConstraints?.().restrictOwnAudio === true; }
+    catch(_){ return false; }
+  }
+
+  function filtrarAudioTela(stream, surface, tab, systemAudio){
+    let removed = false;
+    for (const track of stream.getAudioTracks()){
+      let isolated = false;
+      try{ isolated = track.getSettings().restrictOwnAudio === true; }catch(_){}
+      // Use the actual chosen surface: the user can select a monitor even when
+      // the app suggests a tab. Never publish unverified system/window audio.
+      const permitted = surface === 'browser' ? (tab || systemAudio) : (systemAudio && isolated);
+      if (!permitted){ stream.removeTrack(track); track.stop(); removed = true; }
+    }
+    return removed;
+  }
+
   async function startScreen(modo, systemAudio){
     if (VOICE.screenPending) return;
     const operation = ++VOICE.screenOperation;
@@ -2151,14 +2168,19 @@
     try{
       const profile = SCREEN_PROFILES[VOICE.screenProfile];
       const tab = modo === 'aba';
+      const isolation = suportaIsolamentoTela();
+      const includeSystem = !!systemAudio && isolation;
       // This call must happen during the user's click, before awaiting microphone/TURN.
       stream = await navigator.mediaDevices.getDisplayMedia({
         video:{ width:{ideal:profile.width}, height:{ideal:profile.height}, frameRate:{ideal:profile.fps,max:profile.fps}, ...(tab ? {displaySurface:'browser'} : {}) },
-        audio: tab || systemAudio ? { echoCancellation:false, noiseSuppression:false, autoGainControl:false } : false,
-        systemAudio: !tab && systemAudio ? 'include' : 'exclude', selfBrowserSurface:'exclude', surfaceSwitching:'include'
+        audio: tab || includeSystem ? { echoCancellation:false, noiseSuppression:false, autoGainControl:false, ...(isolation ? {restrictOwnAudio:true} : {}) } : false,
+        systemAudio: !tab && includeSystem ? 'include' : 'exclude', windowAudio:'exclude', selfBrowserSurface:'exclude', surfaceSwitching:'exclude'
       });
       const surface = stream.getVideoTracks()[0]?.getSettings().displaySurface || 'desconhecido';
+      const removedAudio = filtrarAudioTela(stream, surface, tab, includeSystem);
       await instalarTela(stream, surface, operation);
+      if (operation === VOICE.screenOperation && (removedAudio || (systemAudio && !isolation)))
+        showToast('Tela sem áudio do computador para evitar retorno da chamada. Para transmitir som, compartilhe uma aba com áudio.');
     }catch(error){
       if (VOICE.screenStream === stream && stream) stopScreen();
       else pararStream(stream);
@@ -2361,9 +2383,9 @@
     const menu = document.createElement('div'); menu.id = 'menu-tela';
     menu.innerHTML = '<label class="mt-config">Qualidade<select id="menu-perfil">' +
       Object.entries(SCREEN_PROFILES).map(([id,p]) => '<option value="'+id+'">'+p.label+'</option>').join('') +
-      '</select></label><label class="mt-config mt-audio"><input id="menu-system-audio" type="checkbox"> Incluir som do sistema na tela inteira</label>' +
+      '</select></label><label class="mt-config mt-audio"><input id="menu-system-audio" type="checkbox" ' + (suportaIsolamentoTela() ? '' : 'disabled') + '> Som do computador com filtro da chamada</label>' +
       '<button class="mt-op" data-modo="aba"><b>Compartilhar uma aba</b><span>O navegador permite escolher o áudio da aba.</span></button>' +
-      '<button class="mt-op" data-modo="tela"><b>Compartilhar a tela inteira</b><span>Sem áudio do sistema por padrão.</span></button>' +
+      '<button class="mt-op" data-modo="tela"><b>Compartilhar a tela inteira</b><span>' + (suportaIsolamentoTela() ? 'Som opcional, com isolamento da chamada.' : 'Sem som do computador. Para transmitir som, escolha uma aba.') + '</span></button>' +
       '<button class="mt-op" data-modo="captura"><b>Câmera ou placa de captura</b><span>Console, câmera ou entrada HDMI.</span></button>';
     document.body.appendChild(menu);
     const select = menu.querySelector('#menu-perfil'); select.value = VOICE.screenProfile;
@@ -2480,7 +2502,7 @@
       // Quem compartilha vê sempre qual áudio está saindo — o toast some em 5s,
       // e mandar o som do sistema inteiro sem perceber é o erro caro aqui.
       if (!VOICE.screenAudioTrack) tag = '<span class="audio-tag">sem áudio</span>';
-      else if (VOICE.screenSurface === 'monitor') tag = '<span class="audio-tag alerta">áudio do sistema todo</span>';
+      else if (VOICE.screenSurface === 'monitor') tag = '<span class="audio-tag ok">áudio com filtro da chamada</span>';
       else if (VOICE.screenSurface === 'captura') tag = '<span class="audio-tag ok">áudio do aparelho</span>';
       else tag = '<span class="audio-tag ok">áudio só da origem</span>';
     }
