@@ -17,7 +17,7 @@
     async request(path, body, closing){
       const token = typeof this.token === 'function' ? this.token() : this.token;
       if (!token) throw new Error('Sessão de login indisponível.');
-      const timeout = AbortSignal.timeout(18000);
+      const timeout = AbortSignal.timeout(9000);
       const signal = closing ? AbortSignal.timeout(10000) : AbortSignal.any([this.controller.signal, timeout]);
       const response = await fetch(this.endpoint + path, {
         method:'POST',
@@ -50,6 +50,38 @@
       }
     }
 
+    waitForConnected(timeoutMs){
+      if (['connected','completed'].includes(this.pc.iceConnectionState)) return Promise.resolve();
+      return new Promise((resolve,reject) => {
+        const finish = error => {
+          clearTimeout(timer);
+          this.pc.removeEventListener('iceconnectionstatechange', changed);
+          this.pc.removeEventListener('connectionstatechange', changed);
+          error ? reject(error) : resolve();
+        };
+        const changed = () => {
+          if (['connected','completed'].includes(this.pc.iceConnectionState) || this.pc.connectionState === 'connected') finish();
+          else if (this.pc.iceConnectionState === 'failed' || this.pc.connectionState === 'failed') finish(new Error('Conexão SFU falhou.'));
+        };
+        const timer = setTimeout(() => finish(new Error('Tempo esgotado ao conectar ao SFU.')), timeoutMs);
+        this.pc.addEventListener('iceconnectionstatechange', changed);
+        this.pc.addEventListener('connectionstatechange', changed);
+      });
+    }
+
+    waitForTracks(tracks, timeoutMs){
+      return Promise.all(tracks.map(({mid}) => new Promise((resolve,reject) => {
+        const finish = (error,track) => {
+          clearTimeout(timer);
+          this.pc.removeEventListener('track', received);
+          error ? reject(error) : resolve(track);
+        };
+        const received = event => { if (event.transceiver.mid === mid) finish(null,event.track); };
+        const timer = setTimeout(() => finish(new Error('A faixa de vídeo não chegou pelo SFU.')), timeoutMs);
+        this.pc.addEventListener('track', received);
+      })));
+    }
+
     async publish(stream, options){
       options = options || {};
       try{
@@ -64,7 +96,12 @@
           sessionDescription:this.pc.localDescription.toJSON(),
           tracks:transceivers.map((t,i) => ({mid:t.mid,trackName:i === 0 ? 'screen-video' : 'screen-audio'}))
         });
-        await this.negotiate(data);
+        // A publicação só é divulgada aos espectadores depois que o emissor
+        // realmente conectou ao SFU. A referência oficial da Cloudflare também
+        // espera o ICE conectado antes de compartilhar os identificadores.
+        const connected = this.waitForConnected(7000);
+        try{ await this.negotiate(data); await connected; }
+        catch(error){ connected.catch(function(){}); throw error; }
         this.videoSender = transceivers[0].sender;
         await this.setQuality({bitrate:options.bitrate,fps:options.fps,degradation:options.degradation});
         this.publication = data.publication;
@@ -84,7 +121,14 @@
           this.onState(this.pc.connectionState);
         });
         const data = await this.request('/v1/subscribe', {capability:this.session.capability,publication});
-        await this.negotiate(data);
+        // Instalar os listeners antes do setRemoteDescription evita perder o
+        // evento `track`. Só liberar o stream quando todas as faixas chegaram.
+        const tracksReady = this.waitForTracks(data.tracks || [], 6000);
+        const connected = this.waitForConnected(7000);
+        try{
+          await this.negotiate(data);
+          await Promise.all([tracksReady,connected]);
+        }catch(error){ tracksReady.catch(function(){}); connected.catch(function(){}); throw error; }
         this.remoteStream = stream;
         return stream;
       }catch(error){ await this.close(); throw error; }

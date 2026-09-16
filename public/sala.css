@@ -457,6 +457,9 @@
   }
   #stage-actions .sbtn:hover{ background:var(--bg-hover); color:var(--text-hi); }
   #stage-actions .sbtn.on{ background:var(--accent); color:#1a1210; border-color:var(--accent); font-weight:700; }
+  [data-stage-fit]{ font:inherit; font-size:11px; padding:5px 6px; border-radius:6px; cursor:pointer; background:var(--bg-input); color:var(--text-hi); border:1px solid var(--border); max-width:95px; }
+  [data-stage-fit]:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+  .stage-fit-control{ display:flex; }
 
   /* Volume do áudio da transmissão de tela. Separado do volume das vozes de
      propósito: som de jogo ou de vídeo chega muito mais alto que fala, e
@@ -477,6 +480,10 @@
 
   #stage-video-wrap{ flex:1; position:relative; min-height:0; background:#000; }
   #stage-video{ width:100%; height:100%; object-fit:contain; display:block; background:#000; }
+  #stage-video-wrap[data-fit="esticar"] #stage-video{ object-fit:fill; }
+  .stage-fit-full{ display:none; position:absolute; top:12px; right:12px; z-index:2; }
+  #stage-video-wrap:fullscreen .stage-fit-full{ display:block; }
+  #stage-video-wrap:-webkit-full-screen .stage-fit-full{ display:block; }
   #stage-status{
     position:absolute; inset:0; display:none; align-items:center; justify-content:center;
     color:var(--text-low); font-size:13px; text-align:center; padding:20px; pointer-events:none;
@@ -672,7 +679,7 @@
 
     /* Barra do palco: em vez de estourar, quebra em duas linhas. */
     body.mobile-ok #stage-bar{ flex-wrap:wrap; row-gap:6px; padding:7px 10px; }
-    body.mobile-ok #stage-actions{ margin-left:auto; }
+    body.mobile-ok #stage-actions{ margin-left:auto; flex-wrap:wrap; justify-content:flex-end; max-width:100%; }
     body.mobile-ok #stage-vol input[type=range]{ width:56px; }
     body.mobile-ok #stage-actions .sbtn{ padding:7px 9px; }
     /* Com o chat embaixo, o vídeo fica alto demais para sobrar conversa. */
