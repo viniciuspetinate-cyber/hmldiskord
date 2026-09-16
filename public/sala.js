@@ -36,6 +36,7 @@
       && typeof e.name === 'string' && e.name.length > 0 && e.name.length <= 24
       && Number.isFinite(e.ts) && Number.isFinite(e.inc)
       && (e.screenMode === undefined || e.screenMode === 'p2p' || e.screenMode === 'sfu')
+      && (e.screenFallback === undefined || typeof e.screenFallback === 'boolean')
       && (e.screenPublication === undefined || (typeof e.screenPublication === 'string' && e.screenPublication.length <= 4096));
   }
 
@@ -105,11 +106,21 @@
     return !VOICE.stageHidden && VOICE.stageSid !== SID && idValido(VOICE.stageSid) ? VOICE.stageSid : null;
   }
 
+  function precisaFallbackTela(){
+    const sid = assistirSid(), p = sid && VOICE.peers[sid], presence = sid && VOICE.bySession[sid];
+    if (!p || presence?.screenMode !== 'sfu') return false;
+    const video = p.sfuScreen?.getVideoTracks()[0];
+    return !(video && video.readyState === 'live' && !video.muted);
+  }
+
   function querMinhaTela(p){
     // Com publicação no SFU, cada tela sai uma única vez do computador. O mesh
     // P2P continua carregando a voz e serve de retorno automático se o SFU cair.
-    if (typeof SFU_TELA !== 'undefined' && SFU_TELA && (VOICE.sfuStarting || VOICE.sfuPublication)) return false;
     const presence = VOICE.bySession[p.sid];
+    if (typeof SFU_TELA !== 'undefined' && SFU_TELA && (VOICE.sfuStarting || VOICE.sfuPublication)){
+      if (presence?.protocol !== 6) return true;
+      return presence.watching === SID && presence.screenFallback === true;
+    }
     // v5 clients have no subscription protocol; preserve interoperability during rollout.
     return presence?.protocol !== 6 || presence.watching === SID;
   }
@@ -1222,18 +1233,34 @@
 
   function fecharAssinaturaSFU(p){
     if (!p) return;
+    clearTimeout(p.sfuRetryTimer); clearTimeout(p.sfuVideoTimer);
+    p.sfuRetryTimer = null; p.sfuVideoTimer = null;
+    p.sfuRetryAt = 0; p.sfuRetryPublication = null;
     p.sfuOperation = (p.sfuOperation || 0) + 1;
     const transport = p.sfuSubscriber;
-    p.sfuSubscriber = null; p.sfuPublication = null;
-    p.screen = new MediaStream();
+    p.sfuSubscriber = null; p.sfuPublication = null; p.sfuScreen = null;
+    p.screen = p.p2pScreen || new MediaStream();
     if (transport) transport.close().catch(error => console.warn('[sfu] encerramento de assinatura', error));
+  }
+
+  function reagendarAssinaturaSFU(p, publication, delay){
+    clearTimeout(p.sfuRetryTimer);
+    p.sfuRetryAt = Date.now() + delay;
+    p.sfuRetryPublication = publication;
+    p.sfuRetryTimer = setTimeout(() => {
+      p.sfuRetryTimer = null;
+      if (VOICE.peers[p.sid] !== p || assistirSid() !== p.sid) return;
+      if (VOICE.bySession[p.sid]?.screenPublication !== publication) return;
+      p.sfuRetryAt = 0; p.sfuRetryPublication = null;
+      sincronizarAssinaturaSFU();
+    }, delay);
   }
 
   function sincronizarAssinaturaSFU(){
     if (!SFU_TELA) return;
     const sid = assistirSid();
     for (const peer of Object.values(VOICE.peers)){
-      if (peer.sid !== sid && peer.sfuSubscriber) fecharAssinaturaSFU(peer);
+      if (peer.sid !== sid && (peer.sfuSubscriber || peer.sfuRetryTimer)) fecharAssinaturaSFU(peer);
     }
     const p = sid && VOICE.peers[sid];
     const presence = sid && VOICE.bySession[sid];
@@ -1241,27 +1268,48 @@
       ? presence.screenPublication : null;
     if (!p || !publication){ if (p?.sfuSubscriber) fecharAssinaturaSFU(p); return; }
     if (p.sfuSubscriber && p.sfuPublication === publication) return;
-    if (Date.now() < (p.sfuRetryAt || 0) && p.sfuPublication === publication) return;
+    if (Date.now() < (p.sfuRetryAt || 0) && p.sfuRetryPublication === publication) return;
     if (p.sfuSubscriber) fecharAssinaturaSFU(p);
 
     const operation = (p.sfuOperation || 0) + 1;
     const transport = novoSFU(function(){ updateStage(); });
+    clearTimeout(p.sfuRetryTimer); clearTimeout(p.sfuVideoTimer);
+    p.sfuRetryTimer = null; p.sfuVideoTimer = null;
+    p.sfuRetryAt = 0; p.sfuRetryPublication = null;
     p.sfuOperation = operation; p.sfuSubscriber = transport; p.sfuPublication = publication;
-    p.screen = new MediaStream();
+    p.sfuScreen = null;
     transport.subscribe(publication).then(stream => {
       if (p.sfuOperation !== operation || p.sfuSubscriber !== transport){ transport.close(); return; }
-      p.screen = stream; p.sfuError = null;
+      p.sfuScreen = stream; p.sfuError = null;
+      const promoverSFU = () => {
+        if (p.sfuOperation !== operation || p.sfuSubscriber !== transport) return;
+        const video = stream.getVideoTracks()[0];
+        if (!video || video.readyState !== 'live' || video.muted) return;
+        if (p.screen !== stream){ p.screen = stream; window.__SALA_SFU = 'assistindo'; updateStage(); }
+      };
       stream.getTracks().forEach(track => {
         track.addEventListener('mute', updateStage);
-        track.addEventListener('unmute', updateStage);
+        track.addEventListener('unmute', () => { promoverSFU(); updateStage(); });
         track.addEventListener('ended', updateStage);
       });
-      window.__SALA_SFU = 'assistindo';
+      promoverSFU();
+      // Uma sessão SFU pode conectar sem entregar a faixa remota (por exemplo,
+      // quando o apresentador saiu e voltou enquanto outra tela seguia ativa).
+      // Sem este vigia o espectador ficava em "Aguardando o vídeo" para sempre.
+      p.sfuVideoTimer = setTimeout(() => {
+        if (p.sfuOperation !== operation || p.sfuSubscriber !== transport) return;
+        const video = p.sfuScreen?.getVideoTracks()[0];
+        if (video && video.readyState === 'live' && !video.muted){ p.sfuVideoTimer = null; return; }
+        fecharAssinaturaSFU(p);
+        p.sfuError = 'A faixa de vídeo não chegou.';
+        reagendarAssinaturaSFU(p, publication, 1200);
+        updateStage();
+      }, 8000);
       updateStage();
     }).catch(error => {
       if (p.sfuOperation !== operation) return;
       p.sfuSubscriber = null; p.sfuError = error.message || 'Falha no SFU';
-      p.sfuRetryAt = Date.now() + 5000;
+      reagendarAssinaturaSFU(p, publication, 1000);
       console.warn('[sfu] assinatura indisponível', error);
       updateStage();
     });
@@ -1413,7 +1461,7 @@
             sharing: !!VOICE.screenVideoTrack && (!VOICE.sfuStarting || !!VOICE.sfuPublication),
             screenMode: VOICE.sfuPublication ? 'sfu' : 'p2p',
             screenPublication: VOICE.sfuPublication || undefined,
-            protocol:6, watching:assistirSid()
+            protocol:6, watching:assistirSid(), screenFallback:precisaFallbackTela() || undefined
           }), true, 1)
         : Promise.resolve(true);
 
@@ -1505,7 +1553,7 @@
       offerer: SID < sid,
       pc: null, send: null,
       epoch: 0, tries: 0, appliedEpoch: -1, quedaEm: 0, mortoEm: 0, visto: 0,
-      screen: new MediaStream(),
+      screen: new MediaStream(), p2pScreen: new MediaStream(), sfuScreen:null,
       audioEl: null,
       startedAt: 0,
       gotMic: false,
@@ -1545,7 +1593,8 @@
     p.gotMic = false;
     p.startedAt = Date.now();
     p.quedaEm = 0;
-    p.screen = new MediaStream();
+    p.p2pScreen = new MediaStream();
+    if (!p.sfuSubscriber) p.screen = p.p2pScreen;
 
     // v6 peers exchange late ICE candidates over the existing key/value table.
     pc.addEventListener('icecandidate', event => {
@@ -1819,8 +1868,10 @@
     // Áudio (1) e vídeo (2) da tela entram no MediaStream persistente do peer.
     // Como o <video> do palco aponta para esse mesmo objeto, as faixas aparecem
     // sozinhas quando o outro lado começa a compartilhar — sem tocar no DOM.
-    try{ p.screen.addTrack(track); }catch(e){}
-    track.addEventListener('ended', () => { try{ p.screen.removeTrack(track); }catch(e){} });
+    const p2p = p.p2pScreen || (p.p2pScreen = new MediaStream());
+    try{ p2p.addTrack(track); }catch(e){}
+    if (!p.sfuScreen || p.screen !== p.sfuScreen) p.screen = p2p;
+    track.addEventListener('ended', () => { try{ p2p.removeTrack(track); }catch(e){} });
     track.addEventListener('unmute', updateStage);
     track.addEventListener('mute', updateStage);
     updateStage();
@@ -2408,6 +2459,22 @@
   });
 
   // ---------- palco ----------
+  // A viewing preference only: never resize capture, renegotiate or touch audio.
+  function definirFormatoTela(value, remember = true){
+    const mode = value === 'esticar' ? 'esticar' : 'original';
+    document.getElementById('stage-video-wrap').dataset.fit = mode;
+    document.querySelectorAll('[data-stage-fit]').forEach(select => { select.value = mode; });
+    if (remember){
+      try{ localStorage.setItem('local:' + (window.__SALA_NS || '') + 'screen-fit', mode); }catch(_){}
+    }
+  }
+  let formatoSalvo = 'original';
+  try{ formatoSalvo = localStorage.getItem('local:' + (window.__SALA_NS || '') + 'screen-fit'); }catch(_){}
+  definirFormatoTela(formatoSalvo, false);
+  document.querySelectorAll('[data-stage-fit]').forEach(select => {
+    select.addEventListener('change', () => definirFormatoTela(select.value));
+  });
+
   // O <video> é um nó permanente: nunca recriamos o elemento, só trocamos o
   // srcObject quando muda de quem estamos assistindo. Era exatamente isso que
   // quebrava antes — o render periódico recriava o <video> e o stream sumia.
@@ -2455,6 +2522,8 @@
     if (!sharers.some(s => s.sid === VOICE.stageSid)) VOICE.stageSid = sharers[0]?.sid || null;
     const watching = assistirSid();
     if (VOICE.lastWatching !== watching){ VOICE.lastWatching = watching; if (VOICE.joined) queueMicrotask(voiceTick); }
+    const fallback = precisaFallbackTela();
+    if (VOICE.lastScreenFallback !== fallback){ VOICE.lastScreenFallback = fallback; if (VOICE.joined) queueMicrotask(voiceTick); }
     if (SFU_TELA) queueMicrotask(sincronizarAssinaturaSFU);
     document.getElementById('screen-profile-wrap').hidden = !VOICE.screenVideoTrack;
     const on = sharers.length > 0 && !VOICE.stageHidden;
@@ -2526,7 +2595,11 @@
       const viaSFU = VOICE.bySession[cur.sid]?.screenMode === 'sfu';
       const st = viaSFU ? peer?.sfuSubscriber?.pc?.connectionState : peer?.pc?.connectionState;
       const vt = want && want.getVideoTracks()[0];
-      if (viaSFU && peer?.sfuError) msg = 'Reconectando a tela pelo servidor…';
+      const temVideo = !!(vt && vt.readyState === 'live' && !vt.muted);
+      // O caminho P2P temporário já pode estar exibindo a tela enquanto a
+      // assinatura SFU termina. Nesse caso não cubra um vídeo válido com aviso.
+      if (temVideo) msg = '';
+      else if (viaSFU && peer?.sfuError) msg = 'Reconectando a tela pelo servidor…';
       else if (!viaSFU && peer && peer.dead) msg = 'Não foi possível conectar com ' + cur.name + '.\nA rede provavelmente bloqueia P2P — nesse caso é preciso um servidor TURN.';
       else if (st !== 'connected') msg = viaSFU ? 'Conectando a tela pelo servidor…' : 'Conectando com ' + cur.name + '…';
       else if (!vt) msg = 'Aguardando o vídeo…';

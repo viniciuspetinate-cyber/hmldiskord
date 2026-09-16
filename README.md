@@ -1,326 +1,224 @@
-# Sala
-
-Chat com voz em grupo e compartilhamento de tela, num único arquivo HTML por
-ambiente. Não tem build: os arquivos em `public/` são servidos como estão.
-
-## A porta é o index
-
-`public/index.html` é a única tela de login. Ele confere a conta no Worker
-`sala-auth`, grava a sessão para os três ambientes de uma vez e só então mostra
-a lista, com um contador de quantas pessoas estão em cada um. Tem saudação
-("Olá, Fulano") e botão de sair, que apaga a sessão dos três.
-
-Abrir `/sala`, `/hmlsala` ou `/devsala` direto no endereço, sem sessão válida,
-devolve a pessoa para o index. A conferência acontece antes de montar a tela,
-então o formulário antigo não pisca — e se o redirecionamento falhar por
-qualquer motivo, o app simplesmente não carrega. Falha fechando, não abrindo.
-
-**O que isto protege e o que não protege.** Protege o acesso: ninguém entra na
-sala sem passar pelo login. NÃO protege os dados: os arquivos são estáticos e
-carregam a chave publicável do Supabase, cujas políticas liberam leitura e
-escrita para qualquer um. Quem lê o código-fonte alcança a tabela sem abrir
-página nenhuma. Fechar isso exige revogar o acesso anônimo no Supabase e rotear
-o banco por um servidor.
-
-## Ambientes
-
-| Arquivo | Espaço de dados | Entrada |
-|---|---|---|
-| `public/index.html` | — | login em dois passos: conta, depois o nome de exibição |
-| `public/sala.html` | produção | sessão do index |
-| `public/hmlsala.html` | `hmlsala` | sessão do index |
-| `public/devsala.html` | `devsala` | sessão do index |
-
-Os três compartilham a mesma tabela no Supabase, separados por prefixo de
-chave. Homologação e desenvolvimento mostram um selo vermelho e `[DEV]` na aba,
-para ninguém confundir com a sala real.
-
-O apelido é digitado no index e vale em todos os ambientes: a conta diz quem a
-pessoa é, o apelido diz como ela aparece. Em branco, aparece o nome da conta. O
-vínculo apelido/conta fica na sessão, então quem administra as contas continua
-sabendo quem é quem.
-
-Dois efeitos colaterais de deixar o apelido livre, que valem saber: a presença
-é gravada na chave `mb:<apelido>`, então trocar de apelido faz a pessoa
-aparecer como alguém novo na lista, e dois apelidos iguais colidem na mesma
-chave. O ajuste de volume por pessoa também é guardado pelo nome exibido.
-
-O espaço de dados de cada arquivo está fixo dentro dele (`ESPACO_FORCADO`), então
-renomear o arquivo não mistura os dados.
-
-## Publicar na Cloudflare Pages
-
-Workers & Pages → Create → Pages → Connect to Git → escolha este repositório.
-
-    Framework preset ......... None
-    Build command ............ (deixe vazio)
-    Build output directory ... public
-    Root directory ........... (deixe vazio)
-
-A cada push na branch principal, o site é republicado sozinho.
-
-### Domínio próprio (importante)
-
-Redes corporativas costumam bloquear `*.pages.dev` por categoria. Se o time não
-conseguir abrir o endereço `.pages.dev`, aponte um subdomínio de vocês em
-Custom domains — o bloqueio é pelo nome, não pelo servidor.
-
-## Serviços externos
-
-| Worker | Para quê | Variáveis |
-|---|---|---|
-| `sala-auth` | valida a entrada | `SALA_USUARIOS`, `SALA_SEGREDO` |
-| `sala-turn-api` | credenciais TURN das chamadas | `CF_TURN_KEY_ID`, `CF_TURN_API_TOKEN` |
-
-O código dos dois está em `cloudflare/`, como cópia versionada do que está
-publicado. Eles não sobem daqui: são colados no editor do Worker.
-
-## O que tem em `public/`
-
-| Arquivo | Para quê |
-|---|---|
-| `index.html` | login e escolha do ambiente — a porta |
-| `sala.html`, `hmlsala.html`, `devsala.html` | as salas; idênticos exceto `ESPACO_FORCADO` |
-| `novidades.js` | lista de melhorias, compartilhada pelos quatro |
-| `_headers` | manda o navegador conferir se há versão nova a cada carregamento |
-| `icone.png`, `icone-144.png`, `favicon.ico` | o ícone |
-
-Os três HTMLs de sala precisam continuar iguais fora da linha do
-`ESPACO_FORCADO`. Para conferir depois de mexer:
-
-```bash
-L=$(grep -n 'ESPACO_FORCADO = ' public/sala.html | cut -d: -f1); diff <(sed "${L}d" public/sala.html) <(sed "${L}d" public/hmlsala.html)
-```
-
-Não existe mais senha compartilhada de sala. A entrada é sempre por conta
-individual cadastrada em `SALA_USUARIOS`, e se o Worker estiver fora do ar a
-sala NÃO deixa ninguém entrar — não há atalho embutido no HTML. A variável
-`SALA_SENHA` deixou de ser lida: apague-a no painel do Worker.
-
-## DOIS blocos `<script>` — leia antes de mexer
-
-Cada arquivo de sala tem **dois** blocos `<script>`, e cada um é um IIFE, ou
-seja, **um escopo próprio**:
-
-| Bloco | O que tem |
-|---|---|
-| 1º | espaço de dados (`NS`), relógio do servidor, guard da porta única, `window.storage` |
-| 2º | o app inteiro: login, canais, chat, voz, palco, celular |
-
-Uma `function` ou `const` declarada no primeiro **não existe** no segundo. Isso
-já custou um bug: o botão "sair" chamava `apagarSessaoDeTodos()` e
-`voltarParaPorta()`, ambas do primeiro bloco, e recebia `is not defined` — sem
-sair e sem nada visível na tela, porque o erro morria dentro do handler.
-
-A travessia é por `window`, que é o caminho que o primeiro bloco já usava para
-`storage` e `agoraServidor`:
-
-```js
-window.__SALA_PORTA = { endereco, apagarSessao, sessao, voltar };   // 1º bloco
-const PONTE_PORTA = window.__SALA_PORTA || {};                      // 2º bloco
-```
-
-O segundo bloco tem plano B para as duas funções, escrito para não depender de
-nada do primeiro — se a ponte faltar, sair continua funcionando.
-
-**O `return` do guard também só vale para o primeiro bloco.** O segundo roda de
-qualquer forma. Por isso o guard marca `window.__SALA_BARRADO = true` antes de
-sair, e o segundo bloco confere isso na primeira linha. Sem essa marca a sala
-montava a interface completa — barra lateral, listeners, laço de polling —
-atrás de um redirecionamento em andamento.
-
-## Celular
-
-O `index.html` é responsivo sempre. Abaixo de 520px o cartão de ambiente passa
-a duas linhas — identidade em cima, contador e etiqueta embaixo — porque numa
-linha só a descrição era espremida em três linhas estreitas. Abaixo de 360px a
-legenda de cores do pé sai.
-
-Nas salas o layout de celular vale nos **três** ambientes (`MOBILE_OK = true`).
-Ele liga a classe `mobile-ok` no `<body>`, e todo o CSS de celular está preso a
-ela — para desligar, ponha `false`.
-
-O problema que isso resolve: em 375px a régua de 64px mais os canais de 200px
-deixavam **111px** para o chat.
-
-**O corte é 600px**, não mais. Em 800px — um notebook pequeno — os três painéis
-ainda cabem com folga, e tablet em retrato (768px) também; colapsar ali só
-atrapalharia. Quem ganha gaveta é celular de verdade. Se mudar esse número no
-CSS, mude `ESTREITO()` junto: os dois têm que concordar.
-
-Abaixo de 600px:
-
-- A régua sai; o ícone do ambiente reaparece no topo da gaveta.
-- Os canais viram gaveta pela esquerda, no botão ☰ do cabeçalho.
-- Os membros viram gaveta pela direita, no botão `N online` que já existia.
-- Abrir uma fecha a outra, e escolher um canal fecha a gaveta — sem isso a
-  pessoa toca no canal e continua olhando a lista.
-- Tocar no fundo escuro ou apertar Esc fecha.
-- O botão de compartilhar fica só com o ícone, e o de novidades sai (a lista
-  está na página inicial).
-- O palco ocupa no máximo 46vh, para sobrar conversa embaixo.
-- Campos de texto em 16px, que é o tamanho abaixo do qual o Safari dá zoom
-  automático ao focar.
-
-## Portão de ruído (só no dev)
-
-`PORTAO_RUIDO = SO_DEV`. Fecha o microfone quando a pessoa não está falando, de
-modo que teclado, ventilador e conversa ao fundo param de sair.
-
-A cadeia, montada em `montarPortao()`:
-
-```
-microfone -> passa-alta 90Hz -> ganho (o portão) -> faixa que vai para os outros
-                             \-> medidor (RMS)
-```
-
-Decisões que não são óbvias, e o porquê:
-
-- **Soma ao supressor nativo, não substitui.** As três flags do `getUserMedia`
-  continuam ligadas. Um modelo de rede neural (RNNoise) exigiria DESLIGAR o
-  `noiseSuppression`, porque é treinado em áudio cru e se comporta mal com áudio
-  já processado — um portão de ganho não tem esse problema.
-- **A medição é depois do passa-alta.** Medindo antes, um ronco de 50 Hz
-  manteria o portão aberto sem ninguém falar.
-- **Decide sobre um envelope, não sobre o quadro cru.** `PORTAO_DECAIMENTO`
-  segue o pico e cai a um terço em cerca de 80 ms. Decidir a cada 10 ms de som
-  fazia o portão bater no meio da fala.
-- **Histerese de 0,6, e a faixa conta como fala.** Abre no limiar cheio, fecha
-  em 60% dele — e **estando aberto, a faixa entre os dois renova a espera**.
-  Faltava isto na primeira versão: o relógio seguia correndo enquanto a pessoa
-  ainda falava baixo, e o primeiro vale cortava a frase. Era a causa do
-  picotado relatado em uso real.
-- **Espera de 350 ms antes de fechar.** Cobre pausa entre palavras. O tempo
-  total até fechar é esta espera mais a descida do envelope, uns 500 ms — por
-  isso o decaimento não pode ser lento (começou em 0,82, dava 1 segundo).
-
-  Simulado com uma frase que perde força, dá uma consoante surda e retoma: a
-  lógica antiga cortava 2 quadros no meio da fala e trocava de estado 3 vezes;
-  a nova corta 0 e troca 1. Ambas fecham no silêncio.
-- **Rampa por `setTargetAtTime`.** A transição acontece na thread de áudio, então
-  um atraso no timer não vira estalo.
-- **Aba em segundo plano abre o portão.** `setInterval` é estrangulado para uma
-  vez por minuto quando a aba não está visível, e um portão congelado FECHADO
-  deixaria a pessoa muda sem ela perceber. Melhor transmitir ruído que emudecer
-  alguém.
-- **Sem contexto de áudio, não monta.** Se o `AudioContext` não estiver
-  `running`, o destino de mídia sairia mudo. Nesse caso a faixa crua do
-  microfone segue direto, e o console avisa.
-
-O controle mora **fora** da `#call-bar`, que é reescrita por `innerHTML` a cada
-ciclo de presença — um slider ali dentro seria destruído no meio do arraste. O
-limiar é guardado por navegador; zero desliga o portão.
-
-O indicador de "está falando" mede a faixa **processada**, não o microfone cru:
-assim ele apaga quando o portão fecha, em vez de acender para um ruído que
-ninguém está ouvindo.
-
-## Assistir à tela é opcional
-
-Quando alguém compartilha, o palco **não** abre sozinho. Aparece uma faixa
-verde acima do chat — "Fulano está compartilhando a tela · Assistir" — e o
-vídeo só entra se a pessoa pedir.
-
-Isso conserta um bug junto. A única coisa no arquivo que reabria o palco era:
-
-```js
-if (hadNone && sharers.length) VOICE.stageHidden = false;
-```
-
-Só a transição de zero para um compartilhamento. Quem fechava o palco com
-alguém JÁ compartilhando ficava sem volta — nada mais zerava a flag, e só sair
-e entrar no canal de voz resolvia. O convite é o caminho de volta que faltava.
-
-A escolha fica grudada: se você estava assistindo quando a pessoa parou, o
-próximo compartilhamento dela abre sozinho; se você tinha fechado, continua
-fechado. Quem inicia o próprio compartilhamento abre o palco na hora, porque
-quem envia precisa ver o que envia.
-
-Para voltar a abrir na cara de todos, é `stageHidden: false` no estado inicial
-do `VOICE` — mas aí o convite deixa de aparecer no primeiro compartilhamento.
-
-## Trocar de ambiente sem sair
-
-Um botão `⇄ Trocar de ambiente` no topo da barra de canais, logo abaixo do nome
-do ambiente. Ele **volta para a tela de escolha** — não pula direto para outro
-ambiente — porque de lá dá para ver quantas pessoas estão em cada um antes de
-decidir.
-
-A diferença inteira entre ele e o "sair" é uma linha: este **não apaga a
-sessão**. Por isso ele não usa `voltarParaPorta()`, que apaga a sessão dos três
-espaços antes de navegar. O index, encontrando a sessão válida, mostra direto a
-lista de ambientes — sem login e sem a pergunta do apelido.
-
-Isso funciona porque o index grava a sessão para os **três** espaços de uma vez,
-no login. A conta já está reconhecida do outro lado antes de a pessoa chegar
-lá.
-
-Um detalhe de CSS que vale saber: o `#menu-btn` precisa de
-`#chat-header #menu-btn` para esconder no desktop. Com `#menu-btn` sozinho ele
-perde para `#chat-header .head-btn{display:flex}`, que tem especificidade
-maior — e o ☰ aparecia em produção.
-
-## Lista de melhorias
-
-`public/novidades.js` guarda a lista, e é o **único** lugar para editá-la. O
-index e as três salas carregam esse arquivo e mostram o mesmo texto — com uma
-cópia dentro de cada HTML, a primeira edição já deixaria os quatro dizendo
-coisas diferentes.
-
-```js
-window.NOVIDADES_SALA = [
-  { titulo: 'Novidades desta versão (v3)', itens: [ ... ] },
-  ...
-];
-```
-
-O primeiro grupo é o mais recente. Os itens aceitam `<b>` e `<i>`; o título do
-grupo é escapado.
-
-Onde aparece:
-
-- **Nas salas**, no botão `✨ Novidades` do cabeçalho do chat — só o ícone no
-  celular, para não roubar o espaço do nome do canal.
-- **No index**, no botão `✨ Novidades` do canto superior direito.
-
-**Em nenhum dos dois ela abre sozinha.** Nas salas abria quando a versão mudava
-desde a última visita; deixou de abrir. Uma janela na frente de quem só queria
-conversar custa mais atenção do que a novidade vale, e quem quer ler sabe onde
-está o botão. Fecha no ✕, no Esc ou clicando fora.
-
-Duas consequências disso, já tratadas no código: a chave `novidades-vistas`
-não serve mais e é apagada no boot, e o painel que a lista montava aberto ao
-lado da tela de entrada ficou desligado (`MOSTRAR_NOVIDADES_NA_ENTRADA`) — essa
-tela não aparece mais desde a porta única.
-
-Se `novidades.js` não carregar, a lista fica vazia e o botão não aparece, nos
-quatro arquivos. Falha escondendo, não quebrando.
-
-Isto significa que os HTMLs das salas **não são mais autossuficientes**: copiar
-só o `sala.html` para outro lugar funciona, mas sem a lista de novidades.
-
-## Contador de pessoas no index
-
-O index conta as chaves `mb:<apelido>` da tabela, que cada sala reescreve a
-cada ciclo, e considera só as carimbadas nos últimos 30 segundos. A sala usa 8
-segundos para o próprio indicador; aqui a janela é maior de propósito, porque a
-leitura é esporádica e uma aba em segundo plano atrasa o carimbo — com 8s
-apareceria gente saindo e voltando da lista sem ter saído da sala.
-
-Uma requisição só cobre os três ambientes, e o horário de referência vem do
-cabeçalho `Date` da resposta: relógio errado na máquina de quem olha mostraria
-a sala vazia ou cheia sem motivo.
-
-Chaves antigas ficam na tabela quando a última pessoa de um ambiente sai sem a
-limpeza rodar. Elas não atrapalham o contador (a janela de 30s as descarta),
-mas explicam por que a tabela tem mais `mb:` do que gente.
-
-## Conferir o que está no ar
-
-Na tela de entrada aparece a versão. No console do navegador:
-
-    __SALA_VERSAO           versão do arquivo carregado
-    __SALA_ESPACO           espaço de dados em uso
-    __SALA_TURN             se as credenciais de retransmissão chegaram
-    __SALA_DESVIO_RELOGIO() erro do relógio da máquina, em segundos
-    __SALA_SO_RELAY = true  antes de entrar, força a chamada pelo TURN
+# AIQCALL v13 — início rápido e confiável da tela SFU
+
+## Atualização v13
+
+Várias pessoas podem compartilhar ao mesmo tempo. Uma nova transmissão não muda
+a escolha de quem já está assistindo; o espectador troca pelo nome nas abas.
+
+O emissor agora só divulga a publicação depois que sua conexão ICE com o SFU está
+pronta. O espectador só considera a assinatura concluída depois que as faixas
+remotas realmente chegaram. Enquanto isso, somente o espectador que clicou recebe
+um caminho P2P temporário; assim o player pode começar antes da negociação SFU e
+migra para o servidor sem interromper a voz. Se a assinatura falhar, a tentativa
+seguinte começa após um segundo.
+
+Foram verificados 14 testes unitários, 12 testes do gateway e um teste real com
+Edge, vídeo e áudio sintéticos passando pelo Cloudflare Realtime SFU.
+
+Publique a pasta `public` inteira e peça que todos recarreguem a página.
+
+## Atualização v12
+
+Esta edição chegou a selecionar automaticamente a transmissão mais recente. Esse
+comportamento foi removido na v13: cada espectador mantém a tela que escolheu.
+
+A assinatura SFU também ganhou recuperação própria: se a conexão abrir mas a
+faixa de vídeo não chegar, ela é encerrada e refeita. Falhas de assinatura são
+tentadas novamente sem exigir que o espectador saia e entre na chamada.
+
+## Atualização v11
+
+Quem assiste pode escolher `Original` ou `Esticar` na barra da transmissão.
+Original preserva a proporção e pode deixar faixas pretas. Esticar ocupa a área
+inteira sem cortar as bordas do vídeo, alterando a proporção da imagem. A escolha
+é local a cada navegador e ambiente, fica salva e também pode ser alterada pelo
+seletor no canto superior direito em tela cheia. Na navegação anônima ela dura
+somente enquanto o armazenamento daquela sessão existir.
+
+O controle altera apenas a apresentação do vídeo recebido. Mantém o isolamento
+de áudio da v10. Faixas que já façam parte da imagem capturada não são removidas.
+Foram verificados 12 testes unitários e 8 cenários no Edge, incluindo mudança de
+16:9 para 5:4 em vídeo sintético transmitido por WebRTC, troca de formato sem
+substituir o stream, tela cheia e largura de celular.
+
+Publique a pasta `public` inteira. Após recarregar o site, selecione `Esticar`
+na barra acima da transmissão para preencher a área do player.
+
+## Atualização v10
+
+O site agora pede `restrictOwnAudio` quando o navegador oferece suporte, para
+excluir da captura de áudio do sistema o som produzido pela própria aba da chamada.
+Antes de publicar qualquer faixa de áudio de monitor/janela, confere se
+`getSettings().restrictOwnAudio` é `true`. Sem confirmação, remove e encerra essa
+faixa: o compartilhamento de vídeo continua, com orientação para compartilhar uma
+aba com áudio. O microfone continua sendo enviado separadamente.
+
+A opção de áudio do computador fica desabilitada quando o navegador não anuncia
+esse recurso. O filtro é experimental e depende do navegador; não é um filtro
+de voz aplicado ao som inteiro. Para vídeos com som, compartilhar uma aba diferente
+da chamada é a opção de maior compatibilidade. A troca de fonte durante a captura
+fica desabilitada: pare e compartilhe novamente para selecionar outra origem.
+
+Publique a pasta `public` inteira no GitHub, mantendo a saída do Pages em `public`.
+Depois do deploy, quem compartilha deve recarregar a página e iniciar uma nova
+captura. Valide com dois participantes: a voz recebida pela chamada não deve
+retornar no áudio da tela, e o som da aba de vídeo deve continuar audível.
+Os testes automatizados verificam as regras de captura e descarte; não medem a
+eficácia acústica do filtro experimental de cada navegador.
+
+Atualização do projeto fornecido em `hmldiskord-main.zip`, preparada em
+12/09/2026. Aplicação estática com Supabase para dados/sinalização e WebRTC
+em malha para voz, com Cloudflare Realtime SFU para a tela no ambiente DEV.
+Não foi publicada automaticamente.
+
+## O que mudou
+
+- **Voz:** RNNoise local ativo por padrão, com retorno automático ao filtro nativo; seleção de microfone,
+  controle de ganho automático, medidor e calibração em três segundos de silêncio.
+- **Portão de ruído:** decisões no AudioWorklet, com transição suave e pequeno
+  atraso de antecipação para preservar o início da fala. Não depende do timer
+  da página para abrir ou fechar em segundo plano.
+- **Tela sob demanda:** entre clientes v6, áudio e vídeo da tela só são enviados
+  para quem escolheu assistir. Fechar o palco interrompe esse envio e mantém a voz.
+- **Cloudflare SFU no DEV:** quem compartilha envia uma cópia da tela ao servidor,
+  independentemente da quantidade de espectadores. A voz continua P2P e usa o TURN
+  já existente. Se o SFU não responder, a tela retorna automaticamente ao P2P.
+- **Qualidade ajustável:** três perfis e redução gradual por participante quando
+  as estatísticas do navegador indicam limitação persistente de CPU ou banda.
+- **Menos eco:** tela inteira sem áudio do sistema por padrão. A pessoa pode
+  incluí-lo com isolamento confirmado pelo navegador ou compartilhar o áudio de uma aba.
+- **Conexão:** candidatos ICE entregues conforme ficam disponíveis; substituição
+  de faixas de mídia e parâmetros de envio aguardam a conclusão das operações.
+- **Ciclo da chamada:** cancelar a entrada libera o microfone mesmo quando a
+  permissão chega depois. Sair libera a captura e o processamento local.
+- **Diagnóstico:** atraso, perda de pacotes, jitter, taxa de vídeo, resolução e
+  indicação de rota direta/TURN quando disponíveis. Dados exibidos localmente.
+- **Chat:** mensagens salvas separadamente, evitando sobrescrita em envios
+  simultâneos; novas mensagens continuam aparecendo após o limite visual de 200.
+- **Manutenção:** código compartilhado pelas duas salas, validação adicional de
+  dados recebidos e correção das gavetas ao mudar para o layout de celular.
+
+## Usar os controles
+
+Entre em uma chamada. O RNNoise começa ativo e não possui seletor na interface.
+Clique em **Ajustar microfone** para abrir o painel, que permanece recolhido por
+padrão. O texto abaixo do medidor indica o processamento realmente ativo. Se o
+RNNoise não puder iniciar, o áudio recupera usando o filtro nativo disponível.
+
+Clique em **Calibrar no silêncio** e não fale por três segundos. Se palavras
+baixas começarem a cortar, reduza o isolamento. Zero desliga apenas o portão,
+preservando o filtro selecionado. RNNoise reduz ruído, mas não garante remover
+outras pessoas falando perto do microfone. Um fone evita que o som dos colegas
+saia pelo alto-falante e retorne ao microfone.
+
+| Perfil de tela | Captura pretendida | Limite de upload no SFU | Uso |
+|---|---|---|---|
+| Texto | até 1080p / 30 fps | 3 Mbps | Documentos e código |
+| Movimento | até 720p / 30 fps | 2 Mbps | Vídeos e jogos |
+| Econômico | até 540p / 15 fps | 0,9 Mbps | Conexão ou computador limitado |
+
+São limites e preferências, não qualidade ou velocidade garantidas. O navegador
+pode entregar menos, dependendo da origem e dos recursos disponíveis. A adaptação
+aguarda três leituras ruins para reduzir e dez boas para recuperar, a cada
+2,5 segundos enquanto o timer da página estiver ativo. Ela respeita o limite do
+perfil escolhido. Estatísticas ausentes não são tratadas como falhas.
+
+O portão executa no processamento de áudio; isso não impede que o sistema
+operacional suspenda o navegador, especialmente com o celular bloqueado.
+
+## Estrutura e publicação
+
+`public/` é a pasta a publicar. Não há comando de build:
+
+- `index.html`: login e escolha de ambiente já existentes.
+- `sala.html` e `devsala.html`: mesma interface; namespace de dados diferente.
+- `storage.js`: sessão local, relógio e acesso ao Supabase.
+- `sala.js` e `sala.css`: comportamento e apresentação das salas.
+- `sfu-client.js`: transporte de tela pelo Worker/SFU, carregado sem segredos.
+- `audio-engine.js`, `gate-worklet.js`, `vendor/rnnoise/`: processamento local.
+- `novidades.js`, `_headers`, ícone e `robots.txt`: recursos de apoio.
+
+No projeto existente de Cloudflare Pages, mantenha saída `public`, sem build.
+Publique a pasta inteira, incluindo os scripts, o WASM e as licenças. Copiar
+somente os HTMLs agora deixa a sala incompleta. Use HTTPS; abrir um HTML com
+`file://` não reproduz as permissões e módulos de áudio do site.
+
+**Teste primeiro em um deployment de preview separado**, usando o ambiente DEV.
+DEV separa as chaves do banco, mas compartilha o código com PROD. Atualizar os
+arquivos compartilhados no endereço principal também atualiza produção.
+
+O SFU está habilitado por `SO_DEV`: `devsala.html` usa o Worker `aiqcall-sfu` e
+`sala.html` continua com o transporte atual. O navegador entrega ao Worker o token
+de sessão produzido no login. `SALA_SEGREDO` e `SFU_API_TOKEN` permanecem secrets
+dos Workers e nunca entram nos arquivos do site. O Worker deve permitir as salas
+`devsala:voz-geral` e `devsala:voz-sala-2`.
+
+O ZIP recebido não contém o código dos Workers de login/TURN nem migrações do
+banco. Os endereços e a chave pública já usados pelo projeto foram preservados.
+Não é necessário trocar o backend para experimentar estas melhorias.
+
+## Migração do chat e retorno à versão anterior
+
+O histórico antigo em `messages:<canal>` continua sendo lido. Novos envios ficam
+em `msg:<canal>:<id>`, com o mesmo prefixo de ambiente e na mesma tabela `room_kv`.
+A gravação não altera nem apaga o histórico antigo. Políticas específicas que
+limitem os prefixos permitidos precisam aceitar as novas chaves `msg:` e `ice:`;
+essas políticas não foram fornecidas e precisam ser verificadas no preview.
+
+**Depois de publicar, todos devem recarregar as abas.** Clientes v5 não leem as
+novas mensagens v6. A compatibilidade temporária de voz com v5 mantém o envio de
+tela para clientes antigos mesmo sem a nova indicação de interesse.
+
+Guarde a versão anterior para rollback. Voltar os arquivos restaura o código,
+mas v5 não exibirá mensagens gravadas nas novas chaves; elas continuam no banco.
+A conversão de histórico para rollback deve ser planejada antes de uso amplo.
+
+O limite de 200 mensagens é apenas de leitura/exibição. Não foi implementada
+exclusão automática das mensagens persistidas. Defina uma política de retenção
+no servidor conforme a necessidade, preservando histórico antes de excluir.
+
+## Custos e limites
+
+RNNoise e o portão rodam no dispositivo. O Cloudflare Realtime SFU/TURN usa a
+franquia gratuita da conta e pode cobrar excedentes conforme o plano contratado.
+
+Supabase, Cloudflare e TURN continuam sujeitos ao plano e às cotas existentes.
+Mensagens separadas aumentam o número de linhas; Trickle ICE adiciona pequenas
+requisições durante a conexão. Enviar tela somente a interessados tende a reduzir
+upload e tráfego de relay. Isso não garante uma conta de infraestrutura zerada.
+
+A arquitetura continua em malha: o emissor envia uma cópia por pessoa assistindo.
+Por exemplo, três espectadores no limite de 3 Mbps podem exigir aproximadamente
+9 Mbps de upload de vídeo, além do áudio e da sobrecarga de rede. Grupos grandes,
+Wi-Fi instável e computadores fracos ainda podem apresentar travamentos.
+
+## Segurança ainda pendente no servidor
+
+As validações do cliente reduzem erros e entradas malformadas, mas não substituem
+a autorização no servidor. O token de login não passou a autenticar as operações
+REST do Supabase nesta edição. É necessário revisar os Workers e as políticas
+RLS para vincular cada acesso a uma conta e restringir leitura/escrita por sala.
+Isso pode ser desenvolvido sem uma licença paga, mas esses componentes não vieram
+no ZIP. Não considere esta atualização uma correção completa da autenticação.
+
+## Testes
+
+Com Node.js, execute `npm test`. Para integração, instale as dependências de
+desenvolvimento (`npm install`), instale Chromium (`npx playwright install chromium`)
+e execute `npm run test:browser`. Esses pacotes são usados só nos testes.
+
+Opcionalmente, `AIQ_BROWSER` indica o caminho de um Chrome/Edge instalado;
+`AIQ_PLAYWRIGHT` indica uma instalação existente do Playwright;
+`AIQ_TEST_OUTPUT` indica onde salvar evidências.
+
+A integração usa duas páginas em Chromium, WebRTC e AudioWorklet reais,
+microfones sintéticos, vídeo de canvas e backend em memória. As requisições de
+serviços externos são interceptadas; não acessa dados do site publicado.
+
+Antes da publicação definitiva, valide com pessoas em redes diferentes: fala
+baixa, teclado/ventilador, aba em segundo plano, áudio de aba, tela em movimento,
+entrada/saída durante compartilhamento e uso do TURN. A qualidade percebida com
+microfones reais e o comportamento de NAT/rede externa não são cobertos pelo teste
+local. Safari/Firefox, captura física HDMI e suspensão do celular não foram testados.
+
+Licenças e origens: consulte `THIRD-PARTY-NOTICES.md`.
