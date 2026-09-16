@@ -1243,6 +1243,33 @@
     if (transport) transport.close().catch(error => console.warn('[sfu] encerramento de assinatura', error));
   }
 
+  // Recuo progressivo entre tentativas de assinatura: 1s, 2s, 4s, 8s, 16s, com
+  // teto de 30s. O contador zera assim que uma assinatura dá certo.
+  //
+  // POR QUE ISTO EXISTE: o intervalo era fixo em 1s, e cada tentativa cria uma
+  // sessão nova no Worker (subscribe -> open -> POST /v1/sessions). Com o
+  // CREATE_RATE em 6 por minuto e por usuário, seis segundos de repetição
+  // zeravam a cota da pessoa; dali em diante toda tentativa voltava
+  // `rate_limited`, e como o 429 também é falha, o laço se realimentava.
+  //
+  // O efeito era uma falha PASSAGEIRA virar PERMANENTE, e só para quem tropeçou
+  // primeiro — o limite é por conta. Foi exatamente o sintoma relatado: uma
+  // pessoa presa em "Reconectando a tela pelo servidor…" enquanto as outras
+  // assistiam a mesma transmissão sem problema.
+  //
+  // Com o recuo, cabem 6 tentativas no primeiro minuto (0s, 1s, 3s, 7s, 15s,
+  // 31s) e 2 por minuto depois. Nunca encosta no teto.
+  const RECUO_TETO_MS = 30000;
+  const RECUO_COTA_MS = 60000;
+
+  function atrasoDaTentativa(p, motivo){
+    // Repetir antes de a janela do limitador virar é garantidamente inútil:
+    // só gasta tentativa e mantém a cota zerada.
+    if (motivo === 'rate_limited') return RECUO_COTA_MS;
+    p.sfuFalhas = (p.sfuFalhas || 0) + 1;
+    return Math.min(RECUO_TETO_MS, 1000 * Math.pow(2, p.sfuFalhas - 1));
+  }
+
   function reagendarAssinaturaSFU(p, publication, delay){
     clearTimeout(p.sfuRetryTimer);
     p.sfuRetryAt = Date.now() + delay;
@@ -1280,7 +1307,9 @@
     p.sfuScreen = null;
     transport.subscribe(publication).then(stream => {
       if (p.sfuOperation !== operation || p.sfuSubscriber !== transport){ transport.close(); return; }
-      p.sfuScreen = stream; p.sfuError = null;
+      // Zerar aqui é o que faz o recuo funcionar: sem isto, quem tropeçou uma
+      // vez no começo da chamada carregaria a espera acumulada pelo resto dela.
+      p.sfuScreen = stream; p.sfuError = null; p.sfuFalhas = 0;
       const promoverSFU = () => {
         if (p.sfuOperation !== operation || p.sfuSubscriber !== transport) return;
         const video = stream.getVideoTracks()[0];
@@ -1302,14 +1331,18 @@
         if (video && video.readyState === 'live' && !video.muted){ p.sfuVideoTimer = null; return; }
         fecharAssinaturaSFU(p);
         p.sfuError = 'A faixa de vídeo não chegou.';
-        reagendarAssinaturaSFU(p, publication, 1200);
+        reagendarAssinaturaSFU(p, publication, atrasoDaTentativa(p));
         updateStage();
       }, 8000);
       updateStage();
     }).catch(error => {
       if (p.sfuOperation !== operation) return;
       p.sfuSubscriber = null; p.sfuError = error.message || 'Falha no SFU';
-      reagendarAssinaturaSFU(p, publication, 1000);
+      // O Worker devolve o código no corpo e o cliente o repassa como mensagem
+      // do erro (ver request() em sfu-client.js), então dá para distinguir a
+      // recusa por cota de uma falha comum de rede.
+      const motivo = /rate_limited/.test(error.message || '') ? 'rate_limited' : 'erro';
+      reagendarAssinaturaSFU(p, publication, atrasoDaTentativa(p, motivo));
       console.warn('[sfu] assinatura indisponível', error);
       updateStage();
     });
