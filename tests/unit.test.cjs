@@ -154,7 +154,7 @@ test('persistent CPU limitation lowers video quality and stable samples recover 
     return new Map([['video',{id:'video',type:'outbound-rtp',kind:'video',qualityLimitationReason:limited?'cpu':'none'}]]);
   }}};
   const ctx=load(['colherDiagnostico'],{STATS_BUSY:false,VOICE:{joined:true,peers:{remote:p},screenProfile:'texto'},PORTAO:{grafo:null},window:{},
-    document:{getElementById:id=>id==='quality-indicator'?{}:null},PERDA_AUDIO_ALTA:12,async protegerVozPorPerda(){},async protegerRecepcaoPorPerda(){},async applyLocalTracks(){updates++;}});
+    document:{getElementById:id=>id==='quality-indicator'?{}:null},PERDA_AUDIO_ALTA:12,assistirSid:()=>null,async protegerVozPorPerda(){},async protegerRecepcaoPorPerda(){},async applyLocalTracks(){updates++;}});
   for(let i=0;i<3;i++)await ctx.colherDiagnostico();
   assert.equal(p.adaptLevel,1);assert.equal(updates,1);
   limited=false;
@@ -182,6 +182,31 @@ test('viewer with loss asks the SFU publisher for a lighter screen',async()=>{
   const ruim=[{perdaAudioPct:35},{perdaAudioPct:42},{perdaAudioPct:1}];
   await ctx.protegerRecepcaoPorPerda(ruim);await ctx.protegerRecepcaoPorPerda(ruim);
   assert.equal(voice.screenReceiveAdaptLevel,1);assert.equal(ticks,1);assert.match(notices[0],/solicitamos/);
+});
+test('diagnostics distinguish the received SFU screen from direct video',async()=>{
+  let bytes=1000,frames=10,audioBytes=500,audioReceived=100,audioLost=0;
+  const pc={connectionState:'connected',iceConnectionState:'connected'};
+  const subscriber={pc,closed:false,async stats(){
+    return new Map([['video',{id:'video',type:'inbound-rtp',kind:'video',timestamp:bytes,
+      bytesReceived:bytes,framesDecoded:frames,frameWidth:1280,frameHeight:720,freezeCount:0}],
+      ['audio',{id:'audio',type:'inbound-rtp',kind:'audio',timestamp:bytes,
+        bytesReceived:audioBytes,packetsReceived:audioReceived,packetsLost:audioLost,jitter:0.02}]]);
+  }};
+  const stream={};
+  const peer={name:'Emissor',sfuSubscriber:subscriber,sfuScreen:stream,
+    p2pScreen:{getVideoTracks:()=>[{readyState:'live',muted:false}]}};
+  const voice={joined:true,peers:{remote:peer},bySession:{remote:{screenBitrateLevel:1}},screenReceiveAdaptLevel:1};
+  const win={};
+  const ctx=load(['colherDiagnostico'],{
+    STATS_BUSY:false,VOICE:voice,PORTAO:{grafo:null},window:win,PERDA_AUDIO_ALTA:12,
+    assistirSid:()=> 'remote',async protegerVozPorPerda(){},async protegerRecepcaoPorPerda(){},
+    document:{getElementById:id=>id==='quality-indicator'?{}:id==='stage-video'?{srcObject:stream,readyState:4,paused:false,videoWidth:1280,videoHeight:720}:null}
+  });
+  await ctx.colherDiagnostico();bytes+=2500;frames+=8;audioBytes+=1000;audioReceived+=30;audioLost+=10;await ctx.colherDiagnostico();
+  const received=win.__SALA_DIAGNOSTICO.pares.at(-1);
+  assert.equal(received.rota,'SFU');assert.equal(received.videoDiretoAtivo,true);
+  assert.equal(received.recebimento.kbps,8);assert.equal(received.recebimento.fpsMedido,3);
+  assert.equal(received.audioTela.perdaPct,25);assert.equal(received.audioTela.jitterMs,20);
 });
 test('audio worklet opens for speech, closes in silence and calibrates without page timers',()=>{
   let Processor;const messages=[];
