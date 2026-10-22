@@ -44,6 +44,7 @@
       && (e.screenMode === undefined || e.screenMode === 'p2p' || e.screenMode === 'sfu')
       && (e.screenFallback === undefined || typeof e.screenFallback === 'boolean')
       && (e.screenNetworkLevel === undefined || (Number.isInteger(e.screenNetworkLevel) && e.screenNetworkLevel >= 0 && e.screenNetworkLevel <= 2))
+      && (e.screenBitrateLevel === undefined || (Number.isInteger(e.screenBitrateLevel) && e.screenBitrateLevel >= 0 && e.screenBitrateLevel <= 2))
       && (e.screenPublication === undefined || (typeof e.screenPublication === 'string' && e.screenPublication.length <= 4096));
   }
 
@@ -169,7 +170,7 @@
 
   async function aplicarPedidoDaAudiencia(){
     if (!VOICE.screenVideoTrack) return;
-    const pedido = Object.values(VOICE.bySession).reduce((maior,p) => p.watching === SID ? Math.max(maior,p.screenNetworkLevel || 0) : maior,0);
+    const pedido = Object.values(VOICE.bySession).reduce((maior,p) => p.chan === VOICE.chan && p.watching === SID ? Math.max(maior,p.screenNetworkLevel || 0) : maior,0);
     if (pedido === (VOICE.viewerRequestedAdaptLevel || 0)) return;
     VOICE.viewerRequestedAdaptLevel = pedido;
     await atualizarLimiteTelaPorRede();
@@ -366,12 +367,70 @@
           readings.push(sample);
         }catch(error){ console.debug('[diagnóstico SFU]', error.message); }
       }
+      const sidAssistido = assistirSid();
+      const peerAssistido = sidAssistido && VOICE.peers[sidAssistido];
+      const assinatura = peerAssistido?.sfuSubscriber;
+      const player = document.getElementById('stage-video');
+      const telaAssistida = peerAssistido ? {
+        emissor:peerAssistido.name,
+        modoAnunciado:VOICE.bySession[peerAssistido.sid]?.screenMode || 'indisponível',
+        fonteExibida:player?.srcObject === peerAssistido.sfuScreen && peerAssistido.sfuScreen ? 'SFU'
+          : player?.srcObject === peerAssistido.p2pScreen ? 'P2P' : 'nenhuma',
+        estadoSFU:assinatura?.pc?.connectionState || 'sem assinatura',
+        erroSFU:peerAssistido.sfuError || null,
+        reproducao:player ? { pronto:player.readyState, pausado:player.paused,
+          largura:player.videoWidth, altura:player.videoHeight } : undefined
+      } : undefined;
+      if (assinatura?.pc && !assinatura.closed){
+        try{
+          const stats = await assinatura.stats(), previous = peerAssistido.sfuLastStats || new Map();
+          const sample = { pessoa:'Tela SFU: ' + peerAssistido.name, conexao:assinatura.pc.connectionState,
+            ice:assinatura.pc.iceConnectionState, rota:'SFU', erro:peerAssistido.sfuError || null };
+          const videoDireto = peerAssistido.p2pScreen?.getVideoTracks()[0];
+          sample.videoDiretoAtivo = !!(videoDireto && videoDireto.readyState === 'live' && !videoDireto.muted);
+          stats.forEach(s => {
+            const old = previous.get(s.id);
+            if (s.type === 'inbound-rtp' && s.kind === 'video'){
+              sample.recebimento = { largura:s.frameWidth, altura:s.frameHeight, fps:s.framesPerSecond,
+                congelamentos:s.freezeCount, quadrosDecodificados:s.framesDecoded };
+              if (old && s.timestamp > old.timestamp){
+                const dt = s.timestamp - old.timestamp;
+                if (Number.isFinite(s.bytesReceived) && Number.isFinite(old.bytesReceived))
+                  sample.recebimento.kbps = Math.max(0,Math.round((s.bytesReceived-old.bytesReceived)*8/dt));
+                if (Number.isFinite(s.framesDecoded) && Number.isFinite(old.framesDecoded))
+                  sample.recebimento.fpsMedido = Math.max(0,Math.round((s.framesDecoded-old.framesDecoded)*1000/dt));
+                if (Number.isFinite(s.freezeCount) && Number.isFinite(old.freezeCount))
+                  sample.recebimento.novosCongelamentos = Math.max(0,s.freezeCount-old.freezeCount);
+              }
+            }
+            if (s.type === 'inbound-rtp' && s.kind === 'audio'){
+              sample.audioTela = { jitterMs:Number.isFinite(s.jitter) ? Math.round(s.jitter*1000) : undefined };
+              if (old && s.timestamp > old.timestamp){
+                if (Number.isFinite(s.bytesReceived) && Number.isFinite(old.bytesReceived))
+                  sample.audioTela.kbps = Math.max(0,Math.round((s.bytesReceived-old.bytesReceived)*8/(s.timestamp-old.timestamp)));
+                const lost = Math.max(0,(s.packetsLost || 0)-(old.packetsLost || 0));
+                const received = Math.max(0,(s.packetsReceived || 0)-(old.packetsReceived || 0));
+                if (lost+received > 0) sample.audioTela.perdaPct = Math.round(lost/(lost+received)*1000)/10;
+              }
+            }
+            if (s.type === 'candidate-pair' && s.state === 'succeeded' && Number.isFinite(s.currentRoundTripTime))
+              sample.rttMs = Math.round(s.currentRoundTripTime*1000);
+          });
+          peerAssistido.sfuLastStats = new Map(); stats.forEach(s => peerAssistido.sfuLastStats.set(s.id,s));
+          if (player?.srcObject === peerAssistido.sfuScreen)
+            sample.reproducao = { pronto:player.readyState, pausado:player.paused, largura:player.videoWidth, altura:player.videoHeight };
+          readings.push(sample);
+        }catch(error){ console.debug('[diagnóstico da tela recebida]', error.message); }
+      }
       await protegerVozPorPerda(readings);
       await protegerRecepcaoPorPerda(readings);
       const perdas = readings.filter(s => Number.isFinite(s.perdaAudioPct));
       const graves = perdas.filter(s => s.perdaAudioPct >= PERDA_AUDIO_ALTA).length;
       window.__SALA_DIAGNOSTICO = { atualizado:new Date().toISOString(), microfone:PORTAO.grafo?.mode || 'nativo', perfil:VOICE.screenProfile,
-        rede: perdas.length ? { paresComPerdaAlta:graves, protecaoDaVoz:VOICE.audioLossAdaptLevel || 0, solicitacaoAoEmissor:VOICE.screenReceiveAdaptLevel || 0 } : undefined, pares:readings };
+        rede: perdas.length ? { paresComPerdaAlta:graves, protecaoDaVoz:VOICE.audioLossAdaptLevel || 0,
+          solicitacaoAoEmissor:VOICE.screenReceiveAdaptLevel || 0,
+          nivelAplicadoPeloEmissor:peerAssistido && VOICE.bySession[peerAssistido.sid]?.screenBitrateLevel || 0 } : undefined,
+        telaAssistida, pares:readings };
       const panel = document.getElementById('diagnostic-data');
       if (panel) panel.textContent = JSON.stringify(window.__SALA_DIAGNOSTICO,null,2);
       const bad = readings.some(s => s.erro || (s.rttMs||0)>350 || (s.perdaAudioPct||0)>3 || ['cpu','bandwidth'].includes(s.envio?.limitacao));
@@ -392,7 +451,7 @@
 
   // Marcador de versão: serve para confirmar que o site publicado está mesmo
   // servindo este arquivo, e não uma cópia antiga em cache/CDN.
-  const SALA_VERSAO = 'v15 · 2026-10-21';
+  const SALA_VERSAO = 'v16 · 2026-10-21';
 
   // ---------- PONTE COM O PRIMEIRO BLOCO <script> ----------
   // Estas duas moram no bloco de cima, junto do guard de entrada. Blocos
@@ -1317,6 +1376,7 @@
 
   function fecharAssinaturaSFU(p){
     if (!p) return;
+    p.sfuLastStats = null;
     clearTimeout(p.sfuRetryTimer); clearTimeout(p.sfuVideoTimer);
     p.sfuRetryTimer = null; p.sfuVideoTimer = null;
     p.sfuRetryAt = 0; p.sfuRetryPublication = null;
@@ -1546,7 +1606,8 @@
             screenMode: VOICE.sfuPublication ? 'sfu' : 'p2p',
             screenPublication: VOICE.sfuPublication || undefined,
             protocol:6, watching:assistirSid(), screenFallback:precisaFallbackTela() || undefined,
-            screenNetworkLevel:VOICE.screenReceiveAdaptLevel || undefined
+            screenNetworkLevel:VOICE.screenReceiveAdaptLevel || undefined,
+            screenBitrateLevel:VOICE.viewerRequestedAdaptLevel || undefined
           }), true, 1)
         : Promise.resolve(true);
 
