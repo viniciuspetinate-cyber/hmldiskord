@@ -14,6 +14,12 @@
   // RNNoise é o padrão fixo. A interface não oferece troca de filtro; se o
   // módulo não puder iniciar, o próprio mecanismo recupera com o filtro nativo.
   const MIC_PREFS = {device:'',mode:'neural',agc:true};
+  // A voz precisa sobreviver à tela: dois ciclos com perda forte em mais de
+  // um par reduzem apenas a taxa da tela local. A qualidade volta sozinha
+  // depois que a chamada permanece estável.
+  const ESCALAS_TELA = [1,1.5,2];
+  const PERDA_AUDIO_ALTA = 12;
+  const PERDA_AUDIO_NORMAL = 3;
   try{
     const saved = JSON.parse(localStorage.getItem('local:' + (window.__SALA_NS || '') + 'mic-preferences'));
     if (saved){
@@ -37,6 +43,7 @@
       && Number.isFinite(e.ts) && Number.isFinite(e.inc)
       && (e.screenMode === undefined || e.screenMode === 'p2p' || e.screenMode === 'sfu')
       && (e.screenFallback === undefined || typeof e.screenFallback === 'boolean')
+      && (e.screenNetworkLevel === undefined || (Number.isInteger(e.screenNetworkLevel) && e.screenNetworkLevel >= 0 && e.screenNetworkLevel <= 2))
       && (e.screenPublication === undefined || (typeof e.screenPublication === 'string' && e.screenPublication.length <= 4096));
   }
 
@@ -125,6 +132,75 @@
     return presence?.protocol !== 6 || presence.watching === SID;
   }
 
+  function qualidadeTelaEfetiva(profile, adaptLevel, incluirSFU){
+    const level = Math.max(adaptLevel || 0, VOICE.audioLossAdaptLevel || 0, VOICE.viewerRequestedAdaptLevel || 0, incluirSFU ? (VOICE.sfuAdaptLevel || 0) : 0);
+    const scale = ESCALAS_TELA[level] || ESCALAS_TELA[ESCALAS_TELA.length-1];
+    return { scale, bitrate:Math.round(profile.bitrate / scale), fps:level >= 2 ? Math.min(15,profile.fps) : profile.fps, degradation:profile.degradation };
+  }
+
+  async function atualizarLimiteTelaPorRede(){
+    const profile = SCREEN_PROFILES[VOICE.screenProfile];
+    if (!profile || !VOICE.screenVideoTrack) return;
+    const quality = qualidadeTelaEfetiva(profile,0,true);
+    if (VOICE.sfuPublisher) await VOICE.sfuPublisher.setQuality(quality).catch(error => console.warn('[sfu] proteção da voz', error));
+    await Promise.all(Object.values(VOICE.peers).map(applyLocalTracks));
+  }
+
+  async function protegerVozPorPerda(readings){
+    if (!VOICE.screenVideoTrack) return;
+    const medidos = readings.filter(s => Number.isFinite(s.perdaAudioPct));
+    if (!medidos.length) return;
+    const graves = medidos.filter(s => s.perdaAudioPct >= PERDA_AUDIO_ALTA).length;
+    const estavel = medidos.every(s => s.perdaAudioPct < PERDA_AUDIO_NORMAL);
+    VOICE.audioLossBadSamples = graves >= 2 ? (VOICE.audioLossBadSamples || 0) + 1 : 0;
+    VOICE.audioLossGoodSamples = estavel ? (VOICE.audioLossGoodSamples || 0) + 1 : 0;
+    if (!estavel) VOICE.audioLossGoodSamples = 0;
+    const before = VOICE.audioLossAdaptLevel || 0;
+    if (VOICE.audioLossBadSamples >= 2){
+      VOICE.audioLossAdaptLevel = Math.min(2,before+1); VOICE.audioLossBadSamples = 0;
+    }else if (VOICE.audioLossGoodSamples >= 12){
+      VOICE.audioLossAdaptLevel = Math.max(0,before-1); VOICE.audioLossGoodSamples = 0;
+    }
+    if ((VOICE.audioLossAdaptLevel || 0) === before) return;
+    await atualizarLimiteTelaPorRede();
+    if (VOICE.audioLossAdaptLevel > before) showToast('Perda alta de áudio: reduzimos a taxa da tela para preservar a voz.');
+    else showToast('Rede estabilizada: a qualidade da tela foi recuperada.');
+  }
+
+  async function aplicarPedidoDaAudiencia(){
+    if (!VOICE.screenVideoTrack) return;
+    const pedido = Object.values(VOICE.bySession).reduce((maior,p) => p.watching === SID ? Math.max(maior,p.screenNetworkLevel || 0) : maior,0);
+    if (pedido === (VOICE.viewerRequestedAdaptLevel || 0)) return;
+    VOICE.viewerRequestedAdaptLevel = pedido;
+    await atualizarLimiteTelaPorRede();
+    if (pedido) showToast('Um espectador está com perda alta: ajustamos a taxa da tela para preservar a voz.');
+  }
+
+  async function protegerRecepcaoPorPerda(readings){
+    const sid = assistirSid(), presence = sid && VOICE.bySession[sid];
+    if (!sid || presence?.screenMode !== 'sfu'){
+      if (VOICE.screenReceiveAdaptLevel){ VOICE.screenReceiveAdaptLevel=0; VOICE._sig=null; voiceTick(); }
+      return;
+    }
+    const medidos = readings.filter(s => Number.isFinite(s.perdaAudioPct));
+    if (!medidos.length) return;
+    const graves = medidos.filter(s => s.perdaAudioPct >= PERDA_AUDIO_ALTA).length;
+    const estavel = medidos.every(s => s.perdaAudioPct < PERDA_AUDIO_NORMAL);
+    VOICE.screenReceiveBadSamples = graves >= 2 ? (VOICE.screenReceiveBadSamples || 0) + 1 : 0;
+    VOICE.screenReceiveGoodSamples = estavel ? (VOICE.screenReceiveGoodSamples || 0) + 1 : 0;
+    if (!estavel) VOICE.screenReceiveGoodSamples = 0;
+    const before = VOICE.screenReceiveAdaptLevel || 0;
+    if (VOICE.screenReceiveBadSamples >= 2){
+      VOICE.screenReceiveAdaptLevel = Math.min(2,before+1); VOICE.screenReceiveBadSamples = 0;
+    }else if (VOICE.screenReceiveGoodSamples >= 12){
+      VOICE.screenReceiveAdaptLevel = Math.max(0,before-1); VOICE.screenReceiveGoodSamples = 0;
+    }
+    if ((VOICE.screenReceiveAdaptLevel || 0) === before) return;
+    VOICE._sig = null; voiceTick();
+    if (VOICE.screenReceiveAdaptLevel > before) showToast('Perda alta: solicitamos uma tela mais leve para preservar sua voz.');
+    else showToast('Sua rede estabilizou: solicitamos recuperar a qualidade da tela.');
+  }
+
   async function aplicarPerfilTela(){
     const track = VOICE.screenVideoTrack;
     if (!track) return;
@@ -135,7 +211,7 @@
     }catch(error){ console.warn('[tela] perfil de captura limitado pelo dispositivo', error); showToast('A origem não aceitou todo o perfil. O limite de envio será aplicado.'); }
     Object.values(VOICE.peers).forEach(p => { p.adaptLevel = 0; p.badSamples = 0; p.goodSamples = 0; });
     if (VOICE.sfuPublisher){
-      await VOICE.sfuPublisher.setQuality({bitrate:profile.bitrate,fps:profile.fps,scale:1,degradation:profile.degradation})
+      await VOICE.sfuPublisher.setQuality(qualidadeTelaEfetiva(profile,0,true))
         .catch(error => console.warn('[sfu] limite de qualidade', error));
     }
     await Promise.all(Object.values(VOICE.peers).map(applyLocalTracks));
@@ -162,7 +238,7 @@
     VOICE.sfuPublisher = transport;
     try{
       const profile = SCREEN_PROFILES[VOICE.screenProfile];
-      const publication = await transport.publish(stream,{bitrate:profile.bitrate,fps:profile.fps,degradation:profile.degradation});
+      const publication = await transport.publish(stream,qualidadeTelaEfetiva(profile,0,true));
       if (operation !== VOICE.screenOperation || VOICE.screenStream !== stream){ await transport.close(); return false; }
       VOICE.sfuPublication = publication;
       VOICE.sfuStarting = false;
@@ -200,6 +276,7 @@
     VOICE.screenVideoTrack.addEventListener('ended', () => { if (VOICE.screenStream === stream) stopScreen(); });
     VOICE.stageHidden = false; VOICE.stageSid = SID;
     VOICE.sfuLastStats = null; VOICE.sfuAdaptLevel = 0; VOICE.sfuBadSamples = 0; VOICE.sfuGoodSamples = 0;
+    VOICE.audioLossAdaptLevel = 0; VOICE.audioLossBadSamples = 0; VOICE.audioLossGoodSamples = 0;
     VOICE.sfuStarting = SFU_TELA;
     await aplicarPerfilTela();
     if (VOICE.screenStream !== stream) return;
@@ -283,13 +360,18 @@
           if (VOICE.sfuBadSamples >= 3){ VOICE.sfuAdaptLevel = Math.min(2,before+1); VOICE.sfuBadSamples = 0; }
           if (VOICE.sfuGoodSamples >= 10){ VOICE.sfuAdaptLevel = Math.max(0,before-1); VOICE.sfuGoodSamples = 0; }
           if ((VOICE.sfuAdaptLevel || 0) !== before){
-            const profile = SCREEN_PROFILES[VOICE.screenProfile], scale = [1,1.5,2][VOICE.sfuAdaptLevel || 0];
-            await sfu.setQuality({bitrate:profile.bitrate/scale,fps:(VOICE.sfuAdaptLevel || 0)>=2?Math.min(15,profile.fps):profile.fps,scale,degradation:profile.degradation});
+            const profile = SCREEN_PROFILES[VOICE.screenProfile];
+            await sfu.setQuality(qualidadeTelaEfetiva(profile,0,true));
           }
           readings.push(sample);
         }catch(error){ console.debug('[diagnóstico SFU]', error.message); }
       }
-      window.__SALA_DIAGNOSTICO = { atualizado:new Date().toISOString(), microfone:PORTAO.grafo?.mode || 'nativo', perfil:VOICE.screenProfile, pares:readings };
+      await protegerVozPorPerda(readings);
+      await protegerRecepcaoPorPerda(readings);
+      const perdas = readings.filter(s => Number.isFinite(s.perdaAudioPct));
+      const graves = perdas.filter(s => s.perdaAudioPct >= PERDA_AUDIO_ALTA).length;
+      window.__SALA_DIAGNOSTICO = { atualizado:new Date().toISOString(), microfone:PORTAO.grafo?.mode || 'nativo', perfil:VOICE.screenProfile,
+        rede: perdas.length ? { paresComPerdaAlta:graves, protecaoDaVoz:VOICE.audioLossAdaptLevel || 0, solicitacaoAoEmissor:VOICE.screenReceiveAdaptLevel || 0 } : undefined, pares:readings };
       const panel = document.getElementById('diagnostic-data');
       if (panel) panel.textContent = JSON.stringify(window.__SALA_DIAGNOSTICO,null,2);
       const bad = readings.some(s => s.erro || (s.rttMs||0)>350 || (s.perdaAudioPct||0)>3 || ['cpu','bandwidth'].includes(s.envio?.limitacao));
@@ -310,7 +392,7 @@
 
   // Marcador de versão: serve para confirmar que o site publicado está mesmo
   // servindo este arquivo, e não uma cópia antiga em cache/CDN.
-  const SALA_VERSAO = 'v6 · 2026-09-12';
+  const SALA_VERSAO = 'v15 · 2026-10-21';
 
   // ---------- PONTE COM O PRIMEIRO BLOCO <script> ----------
   // Estas duas moram no bloco de cima, junto do guard de entrada. Blocos
@@ -1207,6 +1289,8 @@
     screenStream: null, screenVideoTrack: null, screenAudioTrack: null, screenSurface: null,
     sfuPublisher:null, sfuPublication:null, sfuStarting:false, sfuState:null,
     sfuLastStats:null, sfuAdaptLevel:0, sfuBadSamples:0, sfuGoodSamples:0,
+    audioLossAdaptLevel:0, audioLossBadSamples:0, audioLossGoodSamples:0,
+    screenReceiveAdaptLevel:0, screenReceiveBadSamples:0, screenReceiveGoodSamples:0, viewerRequestedAdaptLevel:0,
     peers: Object.create(null),        // sessionId -> peer
     presence: {},     // canal -> [entrada]
     bySession: {},    // sessionId -> entrada
@@ -1241,33 +1325,6 @@
     p.sfuSubscriber = null; p.sfuPublication = null; p.sfuScreen = null;
     p.screen = p.p2pScreen || new MediaStream();
     if (transport) transport.close().catch(error => console.warn('[sfu] encerramento de assinatura', error));
-  }
-
-  // Recuo progressivo entre tentativas de assinatura: 1s, 2s, 4s, 8s, 16s, com
-  // teto de 30s. O contador zera assim que uma assinatura dá certo.
-  //
-  // POR QUE ISTO EXISTE: o intervalo era fixo em 1s, e cada tentativa cria uma
-  // sessão nova no Worker (subscribe -> open -> POST /v1/sessions). Com o
-  // CREATE_RATE em 6 por minuto e por usuário, seis segundos de repetição
-  // zeravam a cota da pessoa; dali em diante toda tentativa voltava
-  // `rate_limited`, e como o 429 também é falha, o laço se realimentava.
-  //
-  // O efeito era uma falha PASSAGEIRA virar PERMANENTE, e só para quem tropeçou
-  // primeiro — o limite é por conta. Foi exatamente o sintoma relatado: uma
-  // pessoa presa em "Reconectando a tela pelo servidor…" enquanto as outras
-  // assistiam a mesma transmissão sem problema.
-  //
-  // Com o recuo, cabem 6 tentativas no primeiro minuto (0s, 1s, 3s, 7s, 15s,
-  // 31s) e 2 por minuto depois. Nunca encosta no teto.
-  const RECUO_TETO_MS = 30000;
-  const RECUO_COTA_MS = 60000;
-
-  function atrasoDaTentativa(p, motivo){
-    // Repetir antes de a janela do limitador virar é garantidamente inútil:
-    // só gasta tentativa e mantém a cota zerada.
-    if (motivo === 'rate_limited') return RECUO_COTA_MS;
-    p.sfuFalhas = (p.sfuFalhas || 0) + 1;
-    return Math.min(RECUO_TETO_MS, 1000 * Math.pow(2, p.sfuFalhas - 1));
   }
 
   function reagendarAssinaturaSFU(p, publication, delay){
@@ -1307,9 +1364,7 @@
     p.sfuScreen = null;
     transport.subscribe(publication).then(stream => {
       if (p.sfuOperation !== operation || p.sfuSubscriber !== transport){ transport.close(); return; }
-      // Zerar aqui é o que faz o recuo funcionar: sem isto, quem tropeçou uma
-      // vez no começo da chamada carregaria a espera acumulada pelo resto dela.
-      p.sfuScreen = stream; p.sfuError = null; p.sfuFalhas = 0;
+      p.sfuScreen = stream; p.sfuError = null;
       const promoverSFU = () => {
         if (p.sfuOperation !== operation || p.sfuSubscriber !== transport) return;
         const video = stream.getVideoTracks()[0];
@@ -1331,18 +1386,14 @@
         if (video && video.readyState === 'live' && !video.muted){ p.sfuVideoTimer = null; return; }
         fecharAssinaturaSFU(p);
         p.sfuError = 'A faixa de vídeo não chegou.';
-        reagendarAssinaturaSFU(p, publication, atrasoDaTentativa(p));
+        reagendarAssinaturaSFU(p, publication, 1200);
         updateStage();
       }, 8000);
       updateStage();
     }).catch(error => {
       if (p.sfuOperation !== operation) return;
       p.sfuSubscriber = null; p.sfuError = error.message || 'Falha no SFU';
-      // O Worker devolve o código no corpo e o cliente o repassa como mensagem
-      // do erro (ver request() em sfu-client.js), então dá para distinguir a
-      // recusa por cota de uma falha comum de rede.
-      const motivo = /rate_limited/.test(error.message || '') ? 'rate_limited' : 'erro';
-      reagendarAssinaturaSFU(p, publication, atrasoDaTentativa(p, motivo));
+      reagendarAssinaturaSFU(p, publication, 1000);
       console.warn('[sfu] assinatura indisponível', error);
       updateStage();
     });
@@ -1494,7 +1545,8 @@
             sharing: !!VOICE.screenVideoTrack && (!VOICE.sfuStarting || !!VOICE.sfuPublication),
             screenMode: VOICE.sfuPublication ? 'sfu' : 'p2p',
             screenPublication: VOICE.sfuPublication || undefined,
-            protocol:6, watching:assistirSid(), screenFallback:precisaFallbackTela() || undefined
+            protocol:6, watching:assistirSid(), screenFallback:precisaFallbackTela() || undefined,
+            screenNetworkLevel:VOICE.screenReceiveAdaptLevel || undefined
           }), true, 1)
         : Promise.resolve(true);
 
@@ -1526,6 +1578,8 @@
         VOICE.presence = presence;
         VOICE.bySession = bySession;
       }
+
+      await aplicarPedidoDaAudiencia();
 
       if (VOICE.joined){
         const mine = (VOICE.presence[VOICE.chan] || []).filter(e => e.session !== SID);
@@ -1867,11 +1921,11 @@
     const profile = SCREEN_PROFILES[VOICE.screenProfile] || SCREEN_PROFILES.texto;
     const parameters = sender.getParameters();
     if (!parameters.encodings?.length) return;
-    const scale = [1, 1.5, 2][p.adaptLevel || 0];
+    const quality = qualidadeTelaEfetiva(profile,p.adaptLevel || 0,false);
     parameters.degradationPreference = profile.degradation;
-    parameters.encodings[0].maxBitrate = Math.round(profile.bitrate / scale);
-    parameters.encodings[0].maxFramerate = (p.adaptLevel || 0) >= 2 ? Math.min(15,profile.fps) : profile.fps;
-    parameters.encodings[0].scaleResolutionDownBy = scale;
+    parameters.encodings[0].maxBitrate = quality.bitrate;
+    parameters.encodings[0].maxFramerate = quality.fps;
+    parameters.encodings[0].scaleResolutionDownBy = quality.scale;
     await sender.setParameters(parameters);
   }
 
@@ -2451,6 +2505,8 @@
     const publisher = VOICE.sfuPublisher;
     VOICE.sfuPublisher = null; VOICE.sfuPublication = null; VOICE.sfuStarting = false; VOICE.sfuState = null;
     VOICE.sfuLastStats = null; VOICE.sfuAdaptLevel = 0; VOICE.sfuBadSamples = 0; VOICE.sfuGoodSamples = 0;
+    VOICE.audioLossAdaptLevel = 0; VOICE.audioLossBadSamples = 0; VOICE.audioLossGoodSamples = 0;
+    VOICE.viewerRequestedAdaptLevel = 0;
     if (publisher) publisher.close().catch(error => console.warn('[sfu] encerramento da publicação', error));
     pararStream(VOICE.screenStream);
     VOICE.screenStream = null; VOICE.screenVideoTrack = null; VOICE.screenAudioTrack = null; VOICE.screenSurface = null;
