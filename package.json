@@ -1,0 +1,7 @@
+{
+  "name": "aiqcall-static",
+  "version": "6.0.0",
+  "private": true,
+  "scripts": { "test": "node --test tests/unit.test.cjs", "test:browser": "node tests/browser.cjs" },
+  "devDependencies": { "playwright": "1.62.1" }
+}
